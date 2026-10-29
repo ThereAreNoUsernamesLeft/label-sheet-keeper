@@ -394,13 +394,18 @@
     return Word.run(function (ctx) {
       var h = ctx.document.sections.getFirst().getHeader('Primary');
       h.clear();
+      var p = h.paragraphs.getFirst();
+      p.spaceAfter = 0;
       if (on) {
-        var p = h.paragraphs.getFirst();
         p.insertText(S.ARROW_TEXT, 'Start');
         p.alignment = 'Centered';
         p.spaceBefore = S.ARROW_BEFORE_PT;
-        p.spaceAfter = 0;
         p.font.set({ name: 'Arial', size: S.ARROW_SIZE_PT, bold: true, italic: false, color: '#555555' });
+      } else {
+        // An empty header paragraph at normal size is taller than the top
+        // margin and would push the labels down, so make it tiny.
+        p.spaceBefore = 0;
+        p.font.size = 1;
       }
       return ctx.sync();
     });
