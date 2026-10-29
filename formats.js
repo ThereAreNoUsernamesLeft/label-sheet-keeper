@@ -16,9 +16,10 @@
                    (across), and from one label's top edge to the next
                    label's top edge (down). If labels touch, pitch equals
                    the label size.
-       padding     blank space kept inside each label so text stays clear
-                   of the edges
-       align       where text sits in the label: "top", "center" or "bottom"
+       padding     blank space kept inside the left and right sides of each
+                   label so text stays clear of the edges
+       align       where text sits from top to bottom: "center" (best, keeps
+                   text clear of the top and bottom edges), "top" or "bottom"
        font        starting font and size for new sheets
   4. Save the file. GitHub publishes it in a minute or two. In Word, open
      the panel, choose "Make a new label sheet", and the new size is listed.
@@ -37,7 +38,7 @@
       label: { width: 2.625, height: 1 },
       firstLabel: { left: 0.1875, top: 0.5 },
       pitch: { across: 2.75, down: 1 },
-      padding: { top: 0.03, right: 0.1, bottom: 0.03, left: 0.1 },
+      padding: { left: 0.1, right: 0.1 },
       align: 'center',
       font: { name: 'Arial', size: 10 },
       corner: 0.0625
@@ -52,8 +53,8 @@
       label: { width: 8.5, height: 5.5 },
       firstLabel: { left: 0, top: 0 },
       pitch: { across: 8.5, down: 5.5 },
-      padding: { top: 0.4, right: 0.4, bottom: 0.4, left: 0.4 },
-      align: 'top',
+      padding: { left: 0.4, right: 0.4 },
+      align: 'center',
       font: { name: 'Arial', size: 14 },
       corner: 0
     }
@@ -75,7 +76,9 @@
   }
 
   function withDefaults(f) {
-    f.padding = f.padding || { top: 0.05, right: 0.1, bottom: 0.05, left: 0.1 };
+    f.padding = f.padding || {};
+    if (typeof f.padding.left !== 'number') f.padding.left = 0.1;
+    if (typeof f.padding.right !== 'number') f.padding.right = 0.1;
     f.align = f.align === 'top' || f.align === 'bottom' ? f.align : 'center';
     f.font = f.font || { name: 'Arial', size: 10 };
     f.corner = f.corner || 0;

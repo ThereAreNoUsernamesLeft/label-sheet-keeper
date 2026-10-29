@@ -270,10 +270,10 @@
     });
   }
 
-  function createSheet(id) {
+  function createSheet(id, opts) {
     var f = F.getFormat(id);
     if (!f) return Promise.reject(userError('Pick a label size first.'));
-    return S.buildDocx(f).then(function (b64) {
+    return S.buildDocx(f, null, opts).then(function (b64) {
       return Word.run(function (ctx) {
         var doc = ctx.application.createDocument(b64);
         return ctx.sync().then(function () { doc.open(); return ctx.sync(); });
@@ -422,6 +422,12 @@
         say('');
         var msg = 'A new ' + f.name.toLowerCase() + ' document opened in its own window. Click Label Sheet on its Home tab to track it.';
         if (st.kind === 'sheet') { render(); say(msg); } else { document.querySelector('#v-none .lead').textContent = msg; }
+      });
+    });
+    $('test-btn').addEventListener('click', function () {
+      if (!st.fmt) return;
+      queue(function () { return createSheet(st.fmt.id, { test: true }); }).then(function () {
+        say('A test page opened in its own window. Print it on plain paper at 100% scale.');
       });
     });
     $('broken-new').addEventListener('click', function () { choosing = true; render(); });

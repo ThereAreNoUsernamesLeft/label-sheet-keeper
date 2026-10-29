@@ -39,15 +39,17 @@
     var left = tw(f.firstLabel.left), top = tw(f.firstLabel.top);
     var tableW = cols.reduce(function (a, c) { return a + c.w; }, 0);
     var tableH = rows.reduce(function (a, r) { return a + r.h; }, 0);
-    // Word always needs one paragraph after a table. When labels run to the
-    // bottom edge, trim the last row a hair so that paragraph fits on page 1.
+    // Word always needs one paragraph after a table. The bottom page margin is
+    // 0 so everything below the labels is free room for it. When labels run to
+    // the bottom edge, trim the last row so that paragraph still fits on page 1
+    // (that strip is in the printer's no-print zone anyway).
     var over = top + tableH + TRAIL - pageH;
     if (over > 0) { rows[rows.length - 1].h -= over; tableH -= over; }
     return {
       cols: cols, rows: rows, hasGapX: hasGapX, hasGapY: hasGapY,
       pageW: pageW, pageH: pageH, left: left, top: top,
       right: Math.max(0, pageW - left - tableW),
-      bottom: Math.max(0, pageH - top - tableH - TRAIL),
+      bottom: 0,
       tableW: tableW
     };
   }
@@ -83,7 +85,10 @@
     var b = opts.outline ? 'w:val="single" w:sz="4" w:space="0" w:color="999999"' : 'w:val="nil"';
     x.push('<w:tblBorders><w:top ' + b + '/><w:left ' + b + '/><w:bottom ' + b + '/><w:right ' + b + '/><w:insideH ' + b + '/><w:insideV ' + b + '/></w:tblBorders>');
     x.push('<w:tblLayout w:type="fixed"/>');
-    x.push('<w:tblCellMar><w:top w:w="' + tw(pad.top) + '" w:type="dxa"/><w:left w:w="' + tw(pad.left) + '" w:type="dxa"/><w:bottom w:w="' + tw(pad.bottom) + '" w:type="dxa"/><w:right w:w="' + tw(pad.right) + '" w:type="dxa"/></w:tblCellMar>');
+    // Side padding only. Word for Mac can add top/bottom cell padding on top of
+    // an exact row height, which makes rows drift down the page; text is kept
+    // off the top and bottom edges by placing it in the middle of the label.
+    x.push('<w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="' + tw(pad.left) + '" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="' + tw(pad.right) + '" w:type="dxa"/></w:tblCellMar>');
     x.push('</w:tblPr><w:tblGrid>');
     L.cols.forEach(function (c) { x.push('<w:gridCol w:w="' + c.w + '"/>'); });
     x.push('</w:tblGrid>');
@@ -97,7 +102,7 @@
         x.push('<w:vAlign w:val="' + (isLabel ? vAlign : 'top') + '"/></w:tcPr>');
         if (isLabel) {
           n++;
-          if (opts.numbers) x.push('<w:p><w:r><w:t>Label ' + n + '</w:t></w:r></w:p>');
+          if (opts.numbers) x.push('<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>Label ' + n + '</w:t></w:r></w:p>');
           else x.push('<w:p/>');
         } else {
           x.push('<w:p><w:pPr><w:spacing w:line="20" w:lineRule="exact"/><w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr></w:p>');
@@ -158,16 +163,20 @@
     '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>' +
     '</Relationships>';
 
-  function coreXml(f) {
+  function coreXml(f, opts) {
+    var title = (opts && opts.test ? 'Alignment test – ' : 'Label sheet – ') + f.name;
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
-      '<dc:title>' + esc('Label sheet – ' + f.name) + '</dc:title><dc:creator>Label Sheet Keeper</dc:creator></cp:coreProperties>';
+      '<dc:title>' + esc(title) + '</dc:title><dc:creator>Label Sheet Keeper</dc:creator></cp:coreProperties>';
   }
 
-  function customXml(f) {
+  // A real sheet carries LabelSheetFormat so the panel recognizes it. A test
+  // page gets a different name so the panel doesn't track it as a sheet.
+  function customXml(f, opts) {
+    var name = opts && opts.test ? 'LabelSheetTest' : PROP;
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">' +
-      '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="2" name="' + PROP + '"><vt:lpwstr>' + esc(f.id) + '</vt:lpwstr></property>' +
+      '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="2" name="' + name + '"><vt:lpwstr>' + esc(f.id) + '</vt:lpwstr></property>' +
       '</Properties>';
   }
 
@@ -179,8 +188,9 @@
     var zip = new Z();
     zip.file('[Content_Types].xml', CONTENT_TYPES);
     zip.file('_rels/.rels', ROOT_RELS);
-    zip.file('docProps/core.xml', coreXml(f));
-    zip.file('docProps/custom.xml', customXml(f));
+    if (opts.test) { opts.outline = true; opts.numbers = true; }
+    zip.file('docProps/core.xml', coreXml(f, opts));
+    zip.file('docProps/custom.xml', customXml(f, opts));
     zip.file('word/document.xml', documentXml(f, opts));
     zip.file('word/_rels/document.xml.rels', DOC_RELS);
     zip.file('word/styles.xml', stylesXml(f));

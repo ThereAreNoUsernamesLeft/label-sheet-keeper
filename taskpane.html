@@ -5,11 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="X-UA-Compatible" content="IE=Edge">
 <title>Label Sheet Keeper</title>
-<link rel="stylesheet" href="taskpane.css?v=2">
 <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="formats.js?v=2"></script>
-<script src="sheetdoc.js?v=2"></script>
+<script>
+  // Load the panel's own files with a fresh address each time, so Word never
+  // shows an old copy after an update.
+  window.LSK_T = Date.now();
+  document.write('<link rel="stylesheet" href="taskpane.css?t=' + LSK_T + '">' +
+    '<script src="formats.js?t=' + LSK_T + '"><\/script>' +
+    '<script src="sheetdoc.js?t=' + LSK_T + '"><\/script>');
+</script>
 </head>
 <body>
 <main class="pane">
@@ -83,6 +88,7 @@
       <h2><span class="n">3</span>Print</h2>
       <p class="hint">Print with ⌘P. When the labels come out right, mark them used so the spots are cleared for next time.</p>
       <button type="button" id="printed-btn" class="btn primary wide">I printed these</button>
+      <p class="hint">New printer or new pack of labels? <button type="button" id="test-btn" class="btn link inline">Make a test page</button>, print it on plain paper, and hold it behind a label sheet against a light to check that the boxes line up.</p>
       <div id="undo-row" class="row" hidden>
         <span id="undo-msg" class="hint"></span>
         <button type="button" id="undo-btn" class="btn ghost sm">Undo</button>
@@ -103,6 +109,6 @@
 
   <p id="error" class="error" role="alert" hidden></p>
 </main>
-<script src="taskpane.js?v=2"></script>
+<script>document.write('<script src="taskpane.js?t=' + window.LSK_T + '"><\/script>');</script>
 </body>
 </html>

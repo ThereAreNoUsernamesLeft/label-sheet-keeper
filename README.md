@@ -34,6 +34,8 @@ Panel address: https://therearenousernamesleft.github.io/label-sheet-keeper/task
 4. Print with ⌘P. In the print dialog, keep Scale at 100%. If Word warns that margins are outside the printable area, click **Ignore**. The labels have their own blank space inside.
 5. When the labels came out right, click **I printed these**. Save the document.
 
+With a new printer or a new pack of labels, click **Make a test page** in the panel first. Print it on plain paper and hold it behind a label sheet against a light to check that the boxes line up. Word shows the label edges on screen if you turn on **View Gridlines** on the table **Layout** tab; gridlines never print.
+
 Keep one saved document per physical sheet you have in progress. When you load a fresh sheet of labels, click **Start a new sheet**.
 
 ## Adding a new label size
@@ -47,7 +49,7 @@ If a measurement doesn't add up (for example labels running off the page), the p
 
 ## Updating the panel
 
-All of the panel's code lives in this repository. Change a file here, commit, and Word picks up the new version the next time the panel opens. If Word keeps showing the old version, quit Word and reopen it. When changing `taskpane.js`, `taskpane.css`, `formats.js` or `sheetdoc.js`, also raise the `?v=` number after that file's name in `taskpane.html` so Word can't keep an old copy.
+All of the panel's code lives in this repository. Change a file here, commit, and Word picks up the new version the next time the panel opens (the panel loads its files with a fresh address each time). Changes to `taskpane.html` itself can take up to 10 minutes to show, because GitHub lets Word keep a copy of that page for that long.
 
 You only need to touch `manifest.xml` on your Mac again if the add-in's name or web address changes.
 
