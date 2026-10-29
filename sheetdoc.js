@@ -8,7 +8,10 @@
   'use strict';
 
   var TW = 1440;            // twips per inch
-  var TRAIL = 60;           // room kept for Word's required last paragraph (twips)
+  // Room kept below the labels for the paragraph Word requires after a table
+  // (0.3 inch). Word on Mac can add a paragraph of its own, so this is generous;
+  // too little room gives the document a blank second page.
+  var TRAIL = 432;
   var PROP = 'LabelSheetFormat';
 
   function tw(inches) { return Math.round(inches * TW); }
