@@ -478,6 +478,7 @@
     $('printed-btn').addEventListener('click', function () {
       if (!keys(st.filled).length) { say('No labels have text to mark as printed.', 'warn'); return; }
       queue(printedNow).then(function (nums) { return refresh().then(function () { say('Marked ' + labelWord(nums) + ' used. ' + plural(openList().length, 'open spot') + ' left.'); }); });
+      readPrintTime().then(function (ms) { if (ms) { lastPrintSeen = Math.max(lastPrintSeen || 0, ms); savePrintTime(lastPrintSeen); } }).catch(function () {});
     });
     $('undo-btn').addEventListener('click', function () {
       if (!undo) return;
@@ -493,9 +494,92 @@
       });
     });
 
+    var auto = $('auto-mark');
+    auto.checked = autoMarkOn();
+    auto.addEventListener('change', function () { setAutoMark(auto.checked); });
     $('confirm-yes').addEventListener('click', function () { var a = pendingConfirm; closeAsk(); if (a) a(); });
     $('confirm-no').addEventListener('click', closeAsk);
     wireShip();
+  }
+
+  // ---------- noticing prints ----------
+  // Word stamps a "last printed" time on the document whenever it prints.
+  // The panel checks that time every few seconds; when it moves forward,
+  // the filled labels were just printed.
+  var PRINT_KEY = 'lskLastPrint';
+  var AUTO_KEY = 'lsk.autoMark';
+  var lastPrintSeen = null;   // ms; null until the first check
+  var watchTimer = 0;
+
+  function autoMarkOn() { try { return localStorage.getItem(AUTO_KEY) !== 'off'; } catch (e) { return true; } }
+  function setAutoMark(on) { try { localStorage.setItem(AUTO_KEY, on ? 'on' : 'off'); } catch (e) {} }
+  function savedPrintTime() { try { return Number(Office.context.document.settings.get(PRINT_KEY)) || 0; } catch (e) { return 0; } }
+  function savePrintTime(ms) {
+    try { Office.context.document.settings.set(PRINT_KEY, ms); Office.context.document.settings.saveAsync(function () {}); } catch (e) {}
+  }
+  function timeOnly(ms) {
+    try { return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); } catch (e) { return ''; }
+  }
+
+  function readPrintTime() {
+    return Word.run(function (ctx) {
+      var props = ctx.document.properties;
+      props.load('lastPrintDate');
+      return ctx.sync().then(function () {
+        var d = props.lastPrintDate;
+        var ms = d ? new Date(d).getTime() : 0;
+        return isFinite(ms) && ms > 0 && new Date(ms).getFullYear() > 1990 ? ms : 0;
+      });
+    });
+  }
+
+  function checkPrinted() {
+    if (busy || st.kind !== 'sheet') return;
+    readPrintTime().then(function (ms) {
+      if (lastPrintSeen === null) {
+        // First look: anything printed before this panel opened counts as
+        // new only if it's later than the last print this document recorded.
+        var saved = savedPrintTime();
+        lastPrintSeen = saved || ms;
+        if (!saved) savePrintTime(ms);
+        if (!(saved && ms > saved)) { showWatch(ms); return; }
+      }
+      if (ms <= lastPrintSeen) return;
+      lastPrintSeen = ms;
+      savePrintTime(ms);
+      showWatch(ms);
+      onPrinted(ms);
+    }).catch(function () { /* checking is best-effort; the button still works */ });
+  }
+
+  function showWatch(ms) {
+    $('print-watch').textContent = ms ? 'Last printed ' + fmtDate(ms) + '.' : 'Not printed yet.';
+  }
+
+  function onPrinted(ms) {
+    queue(function () { return readState().then(apply); }).then(function () {
+      var nums = keys(st.filled);
+      if (!nums.length) return;
+      var when = timeOnly(ms);
+      if (autoMarkOn()) {
+        queue(printedNow).then(function (done) {
+          return refresh().then(function () {
+            say('Word printed this sheet' + (when ? ' at ' + when : '') + ', so ' + labelWord(done) + (done.length === 1 ? ' is' : ' are') + ' now marked used. Click Undo if they didn’t come out right.');
+          });
+        });
+      } else {
+        ask('Word printed this sheet' + (when ? ' at ' + when : '') + '. Mark ' + labelWord(nums) + ' used?', 'Mark used', function () {
+          queue(printedNow).then(function (done) { return refresh().then(function () { say('Marked ' + labelWord(done) + ' used.'); }); });
+        });
+      }
+    });
+  }
+
+  function startPrintWatch() {
+    clearInterval(watchTimer);
+    watchTimer = setInterval(checkPrinted, 2500);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) checkPrinted(); });
+    setTimeout(checkPrinted, 800);
   }
 
   // ---------- shipping labels ----------
@@ -834,6 +918,7 @@
       if (!Office.context.requirements.isSetSupported('WordApi', '1.3')) { show('v-old'); return; }
       wire();
       refresh();
+      startPrintWatch();
       try { Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, onSelectionChanged); } catch (e) {}
     });
   }

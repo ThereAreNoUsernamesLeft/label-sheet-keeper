@@ -131,7 +131,9 @@
 
     <div class="step">
       <h2><span class="n">3</span>Print</h2>
-      <p class="hint">Print with ⌘P. When the labels come out right, mark them used so the spots are cleared for next time.</p>
+      <p class="hint">Print with ⌘P. The panel notices when Word prints this sheet and marks the filled labels used. If it ever misses a print, click the button.</p>
+      <label class="check"><input type="checkbox" id="auto-mark" checked> Mark labels used as soon as Word prints</label>
+      <p id="print-watch" class="hint watch"></p>
       <button type="button" id="printed-btn" class="btn primary wide">I printed these</button>
       <p class="hint">New printer or new pack of labels? <button type="button" id="test-btn" class="btn link inline">Make a test page</button>, print it on plain paper, and hold it behind a label sheet against a light to check that the boxes line up.</p>
       <div id="undo-row" class="row" hidden>
