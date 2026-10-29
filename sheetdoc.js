@@ -193,7 +193,7 @@
     x.push('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/><w:rPr><w:vanish/><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr></w:p>');
     var orient = L.pageW > L.pageH ? ' w:orient="landscape"' : '';
     x.push('<w:sectPr>');
-    if (opts.header) x.push('<w:headerReference w:type="default" r:id="rId3"/>');
+    if (opts.parts) x.push('<w:headerReference w:type="default" r:id="rId3"/><w:footerReference w:type="default" r:id="rId4"/>');
     x.push('<w:pgSz w:w="' + L.pageW + '" w:h="' + L.pageH + '"' + orient + '/>');
     x.push('<w:pgMar w:top="' + L.top + '" w:right="' + L.right + '" w:bottom="' + L.bottom + '" w:left="' + L.left + '" w:header="0" w:footer="0" w:gutter="0"/>');
     x.push('<w:cols w:space="720"/></w:sectPr>');
@@ -201,11 +201,19 @@
     return x.join('');
   }
 
+  // The header holds the feed arrow, or else one tiny empty paragraph. The
+  // footer is always one tiny empty paragraph. With top or bottom margins of
+  // 0, Word makes room for a header or footer even when there is none, which
+  // would push full-height labels onto a second page.
+  var TINY_P = '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/><w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr></w:p>';
   function headerXml(text) {
-    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ' + NS + '>' +
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ' + NS + '>' + (text ?
       '<w:p><w:pPr><w:spacing w:before="' + ARROW_BEFORE_PT * 20 + '" w:after="0"/><w:jc w:val="center"/></w:pPr>' +
       '<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:b/><w:color w:val="555555"/><w:sz w:val="' + ARROW_SIZE_PT * 2 + '"/><w:szCs w:val="' + ARROW_SIZE_PT * 2 + '"/></w:rPr>' +
-      '<w:t xml:space="preserve">' + esc(text) + '</w:t></w:r></w:p></w:hdr>';
+      '<w:t xml:space="preserve">' + esc(text) + '</w:t></w:r></w:p>' : TINY_P) + '</w:hdr>';
+  }
+  function footerXml() {
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ' + NS + '>' + TINY_P + '</w:ftr>';
   }
 
   // A flat package for Word's insertOoxml: the spacer and the label table,
@@ -271,7 +279,7 @@
     '<Relationship Id="rId1" Type="http://schemas.microsoft.com/office/2011/relationships/webextension" Target="webextension1.xml"/>' +
     '</Relationships>';
 
-  function contentTypes(we, header) {
+  function contentTypes(we) {
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
       '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
@@ -279,7 +287,8 @@
       '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
       '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
       '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>' +
-      (header ? '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : '') +
+      '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' +
+      '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' +
       '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
       '<Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/>' +
       (we ? '<Override PartName="/word/webextensions/taskpanes.xml" ContentType="application/vnd.ms-office.webextensiontaskpanes+xml"/>' +
@@ -295,12 +304,13 @@
       (we ? '<Relationship Id="rId4" Type="http://schemas.microsoft.com/office/2011/relationships/webextensiontaskpanes" Target="word/webextensions/taskpanes.xml"/>' : '') +
       '</Relationships>';
   }
-  function docRels(header) {
+  function docRels() {
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
       '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
       '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>' +
-      (header ? '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>' : '') +
+      '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>' +
+      '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>' +
       '</Relationships>';
   }
 
@@ -351,10 +361,10 @@
     var L = layout(f, opts);
     var header = (opts.feedArrow || opts.test) && hasStrip(f) && L.top >= tw(STRIP_MARGIN) ? (opts.test ? TEST_ARROW_TEXT : ARROW_TEXT) : '';
     var docOpts = {}; Object.keys(opts).forEach(function (k) { docOpts[k] = opts[k]; });
-    docOpts.header = !!header;
+    docOpts.parts = true;
     var we = opts.addinRef && opts.addinRef.id && !opts.test;
     var zip = new Z();
-    zip.file('[Content_Types].xml', contentTypes(we, !!header));
+    zip.file('[Content_Types].xml', contentTypes(we));
     zip.file('_rels/.rels', rootRels(we));
     if (we) {
       zip.file('word/webextensions/taskpanes.xml', TASKPANES);
@@ -364,10 +374,11 @@
     zip.file('docProps/core.xml', coreXml(f, opts));
     zip.file('docProps/custom.xml', customXml(f, L, opts));
     zip.file('word/document.xml', documentXml(f, docOpts));
-    zip.file('word/_rels/document.xml.rels', docRels(!!header));
+    zip.file('word/_rels/document.xml.rels', docRels());
     zip.file('word/styles.xml', stylesXml(f));
     zip.file('word/settings.xml', SETTINGS);
-    if (header) zip.file('word/header1.xml', headerXml(header));
+    zip.file('word/header1.xml', headerXml(header));
+    zip.file('word/footer1.xml', footerXml());
     return zip.generateAsync({ type: opts.type || 'base64', compression: 'DEFLATE' });
   }
 

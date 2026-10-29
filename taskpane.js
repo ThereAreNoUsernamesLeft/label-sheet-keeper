@@ -377,6 +377,7 @@
       if (snap !== lastSnap) { lastSnap = snap; setSetting(DOC.snap, JSON.parse(snap)); }
       updateRegistry();
       syncHeader();
+      tidyEdges();
     } else if (s.kind !== 'broken') st.fmt = null;
     render();
   }
@@ -410,6 +411,38 @@
       return ctx.sync();
     });
   }
+  // Sheets made before version 1.4 have no header or footer parts. With top
+  // or bottom margins of 0, Word makes room for an empty one anyway, which
+  // pushes full-height labels (shipping, full sheet) onto a second page. Once
+  // per panel load, shrink an empty header or footer to a 1-point line.
+  var edgesChecked = false;
+  function tidyEdges() {
+    if (edgesChecked || st.kind !== 'sheet') return;
+    edgesChecked = true;
+    var withHeader = !st.header && !st.headerOther;
+    queue(function () {
+      return Word.run(function (ctx) {
+        var sec = ctx.document.sections.getFirst();
+        var parts = [sec.getFooter('Primary')];
+        if (withHeader) parts.push(sec.getHeader('Primary'));
+        var lists = parts.map(function (h) { var ps = h.paragraphs; ps.load('items/text,items/font/size,items/spaceBefore'); return ps; });
+        return ctx.sync().then(function () {
+          var changed = false;
+          lists.forEach(function (ps, i) {
+            var items = ps.items;
+            if (items.some(function (p) { return p.text.trim(); })) return;   // someone's own header or footer
+            if (items.length === 1 && items[0].font.size <= 2 && !items[0].spaceBefore) return;   // already tiny
+            parts[i].clear();
+            var p = parts[i].paragraphs.getFirst();
+            p.spaceBefore = 0; p.spaceAfter = 0; p.font.size = 1;
+            changed = true;
+          });
+          return changed ? ctx.sync().then(autosave) : null;
+        });
+      }).catch(function () { /* older Word: leave it */ });
+    });
+  }
+
   var headerBusy = false;
   function syncHeader() {
     if (headerBusy || !arrowFits() || st.headerOther) return;
