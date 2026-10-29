@@ -6,6 +6,10 @@ A side panel for Microsoft Word that keeps track of which labels on a sheet are 
 - The panel shows a map of the sheet: used, filled, and open spots.
 - Copy one label to the next open spots, print with ⌘P, then click **I printed these**. Those spots become used and locked, so you can't type in them by accident.
 - The record of used spots is saved inside the Word document, so it goes wherever the file goes.
+- The panel notices when Word prints the sheet and marks the filled labels used (with Undo).
+- After any change, the panel saves the document for you (once it has been saved the first time).
+- Label sheets open with the panel already showing.
+- **Fill all open spots** puts one label on every open spot, for a sheet of return address labels.
 
 Sizes included:
 
@@ -13,6 +17,12 @@ Sizes included:
 | --- | --- | --- |
 | 1″ × 2⅝″ | 30 per sheet | Avery 5160 / 8160 |
 | 5½″ × 8½″, sideways page | 2 per sheet | Avery 5126 / 8126 and other 2-per-page shipping labels |
+| ½″ × 1¾″ | 80 per sheet | Avery 5167 / 8167 |
+| 2″ × 4″ | 10 per sheet | Avery 5163 / 8163 |
+| 3⅓″ × 4″ | 6 per sheet | Avery 5164 / 8164 |
+| 8½″ × 11″ | 1 per sheet | Avery 5165 / 8165 (full-sheet; good for a carrier label at full size) |
+
+Print the test page once for any size you haven't used before, to confirm it lines up with your labels.
 
 Panel address: https://therearenousernamesleft.github.io/label-sheet-keeper/taskpane.html
 
@@ -43,7 +53,7 @@ The page shows sideways with the two labels standing upright, side by side. In t
 - **Use a label file:** choose an Amazon return label PDF or a picture of any label (or drop it on the panel). Drag across the label on the preview to leave out instructions or packing slips, then click **Put on the next open label**. The label is sized to fit and turned upright if needed.
 - **Type an address label:** fill in From and Ship to. Your return address is remembered for next time.
 
-Print the test page once to see which half of your physical sheet is label 1, so you know which spot to mark when you peel one off.
+Print the test page once and tell the panel whether Label 1 came out on the top or bottom half of your sheet. From then on the panel calls them the top label and bottom label.
 
 Keep one saved document per physical sheet you have in progress. When you load a fresh sheet of labels, click **Start a new sheet**.
 

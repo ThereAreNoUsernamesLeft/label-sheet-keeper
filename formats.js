@@ -67,6 +67,68 @@
       font: { name: 'Arial', size: 12 },
       corner: 0,
       shipping: true
+    },
+    {
+      id: 'avery-5167',
+      name: 'Small return address labels, 80 per sheet',
+      detail: '½″ × 1¾″ · fits Avery 5167 / 8167',
+      page: { width: 8.5, height: 11 },
+      across: 4,
+      down: 20,
+      label: { width: 1.75, height: 0.5 },
+      firstLabel: { left: 0.3, top: 0.5 },
+      pitch: { across: 2.05, down: 0.5 },
+      padding: { left: 0.06, right: 0.06 },
+      align: 'center',
+      font: { name: 'Arial', size: 7 },
+      corner: 0.05
+    },
+    {
+      id: 'avery-5163',
+      name: 'Shipping labels, 10 per sheet',
+      detail: '2″ × 4″ · fits Avery 5163 / 8163',
+      page: { width: 8.5, height: 11 },
+      across: 2,
+      down: 5,
+      label: { width: 4, height: 2 },
+      firstLabel: { left: 0.15625, top: 0.5 },
+      pitch: { across: 4.1875, down: 2 },
+      padding: { left: 0.15, right: 0.15 },
+      align: 'center',
+      font: { name: 'Arial', size: 12 },
+      corner: 0.0625
+    },
+    {
+      id: 'avery-5164',
+      name: 'Shipping labels, 6 per sheet',
+      detail: '3⅓″ × 4″ · fits Avery 5164 / 8164',
+      page: { width: 8.5, height: 11 },
+      across: 2,
+      down: 3,
+      label: { width: 4, height: 3.3333 },
+      firstLabel: { left: 0.15625, top: 0.5 },
+      pitch: { across: 4.1875, down: 3.3333 },
+      padding: { left: 0.2, right: 0.2 },
+      align: 'center',
+      font: { name: 'Arial', size: 12 },
+      corner: 0.0625
+    },
+    {
+      id: 'full-sheet-1',
+      name: 'Full-sheet label, 1 per sheet',
+      detail: '8½″ × 11″ · fits Avery 5165 / 8165; good for printing a carrier label full size',
+      page: { width: 8.5, height: 11 },
+      across: 1,
+      down: 1,
+      label: { width: 8.5, height: 11 },
+      firstLabel: { left: 0, top: 0 },
+      pitch: { across: 8.5, down: 11 },
+      padding: { left: 0.4, right: 0.4 },
+      align: 'top',
+      topSpace: 0.45,
+      font: { name: 'Arial', size: 14 },
+      corner: 0,
+      shipping: true
     }
   ];
 

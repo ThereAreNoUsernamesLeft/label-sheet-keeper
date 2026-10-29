@@ -82,11 +82,19 @@
         <input id="copies" type="number" min="1" value="1" inputmode="numeric">
         <button type="button" id="copy-btn" class="btn ghost">Copy to next open</button>
       </div>
+      <button type="button" id="fill-all" class="btn ghost wide">Fill all open spots with this label</button>
     </div>
 
     <div class="step" id="step-ship" hidden>
       <h2><span class="n">2</span>Fill a shipping label</h2>
       <p class="hint" id="ship-target"></p>
+      <div id="side-row" class="side-row" hidden>
+        <p class="hint" id="side-q">After printing the test page, which half of your sheet did Label 1 come out on?</p>
+        <div class="seg" role="group" aria-labelledby="side-q">
+          <button type="button" id="side-top" data-side="top">Top half</button>
+          <button type="button" id="side-bottom" data-side="bottom">Bottom half</button>
+        </div>
+      </div>
 
       <div class="card">
         <h3>Use a label file</h3>
@@ -146,6 +154,8 @@
       <summary>Print history</summary>
       <ul id="hist" class="hist"></ul>
     </details>
+
+    <p id="save-hint" class="hint save-hint" hidden>Save this document once (⌘S). From the next time you open it, the panel saves it for you after every change.</p>
 
     <footer class="foot">
       <button type="button" id="reset-btn" class="btn link">Start a new sheet</button>

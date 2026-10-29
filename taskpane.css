@@ -115,3 +115,12 @@ textarea{display:block;width:100%;font:13px/1.4 var(--f);padding:7px 9px;border:
 .check{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;cursor:pointer}
 .check input{margin:2px 0 0;accent-color:var(--accent)}
 .watch{font-size:11.5px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:transparent;color:var(--ink);font:500 12.5px var(--f);padding:6px 12px;cursor:pointer;min-height:30px}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.side-row{display:grid;gap:6px}
+.cell .side{position:absolute;left:0;right:0;top:44%;text-align:center;font:600 max(9px,3.4cqw)/1 var(--f);color:var(--label-num);letter-spacing:.04em;text-transform:uppercase;pointer-events:none}
+.cell.filled .side{display:none}
+.save-hint{padding:8px 10px;border:1px dashed var(--line);border-radius:8px;text-align:center}
+.side-row .seg{justify-self:start}

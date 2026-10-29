@@ -59,6 +59,51 @@
     return p.then(function (v) { return v; }, function () { return new Promise(function () {}); });
   }
 
+  // ---------- keeping the document saved, and opening the panel with it ----------
+  var saveTimer = 0, needsFirstSave = false;
+  function docUrl() { try { return Office.context.document.url || ''; } catch (e) { return ''; } }
+  // Save after the panel changes the document, so the record of used spots
+  // can't be lost. A document that has never been saved is left alone (saving
+  // it would ask for a name); the panel shows a reminder instead.
+  function autosave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      if (!docUrl()) { needsFirstSave = true; $('save-hint').hidden = false; return; }
+      Word.run(function (ctx) { ctx.document.save(); return ctx.sync(); }).catch(function () {});
+    }, 700);
+  }
+  function queueChange(task) { return queue(task).then(function (v) { autosave(); return v; }); }
+  // Tag a label sheet so Word opens this panel whenever the document opens.
+  function tagForAutoOpen() {
+    try {
+      var s = Office.context.document.settings;
+      if (s.get('Office.AutoShowTaskpaneWithDocument') !== true) {
+        s.set('Office.AutoShowTaskpaneWithDocument', true);
+        s.saveAsync(function () {});
+      }
+    } catch (e) {}
+  }
+
+  // ---------- top / bottom names for sideways 2-per-sheet labels ----------
+  var SIDE_KEY = 'lsk.side.';
+  function sideApplies(f) { return !!f && f.page.width > f.page.height && f.across === 2 && f.down === 1; }
+  function getSide(f) { try { return localStorage.getItem(SIDE_KEY + f.id) || ''; } catch (e) { return ''; } }
+  function setSide(f, v) { try { localStorage.setItem(SIDE_KEY + f.id, v); } catch (e) {} }
+  function labelName(n) {
+    var f = st.fmt;
+    if (!sideApplies(f)) return 'label ' + n;
+    var side = getSide(f);
+    if (!side) return 'label ' + n + (n === 1 ? ' (left)' : ' (right)');
+    return n === (side === 'top' ? 1 : 2) ? 'top label' : 'bottom label';
+  }
+  function sideWord(n) {
+    var f = st.fmt, side = sideApplies(f) ? getSide(f) : '';
+    if (!side) return '';
+    return n === (side === 'top' ? 1 : 2) ? 'Top' : 'Bottom';
+  }
+  function cap(t) { return t.charAt(0).toUpperCase() + t.slice(1); }
+  function theName(n) { var nm = labelName(n); return /^label/.test(nm) ? nm : 'the ' + nm; }
+
   // ---------- reading the document ----------
   function readState() {
     return Word.run(function (ctx) {
@@ -116,6 +161,7 @@
   function apply(s) {
     st = s;
     if (s.kind !== 'sheet') st.fmt = null;
+    else tagForAutoOpen();
     render();
   }
   var selTimer = 0;
@@ -312,6 +358,7 @@
     $('first-n').max = String(total());
     $('copies').max = String(total());
     $('undo-row').hidden = !undo;
+    $('save-hint').hidden = !(needsFirstSave && !docUrl());
     if (undo) $('undo-msg').textContent = 'Marked ' + labelWord(undo.nums) + ' used.';
   }
 
@@ -358,7 +405,8 @@
         b.style.borderRadius = f.corner ? (f.corner / f.page.width * 100) + 'cqw' : '0';
         var t = document.createElement('span'); t.className = 't';
         var num = document.createElement('span'); num.className = 'num'; num.textContent = n; num.setAttribute('aria-hidden', 'true');
-        b.appendChild(t); b.appendChild(num);
+        var sd = document.createElement('span'); sd.className = 'side'; sd.setAttribute('aria-hidden', 'true');
+        b.appendChild(t); b.appendChild(num); b.appendChild(sd);
         map.appendChild(b);
       }
       mapBuiltFor = f.id;
@@ -368,7 +416,8 @@
       var state = st.used[n] ? 'used' : st.filled[n] ? 'filled' : 'open';
       b.className = 'cell ' + state + (st.here === n ? ' here' : '');
       b.firstChild.textContent = state === 'filled' ? String(st.texts[n] || '').split(/[\r\n\u000b]+/).slice(0, 3).join('\n') : '';
-      b.setAttribute('aria-label', 'Label ' + n + ', ' + (state === 'filled' ? 'has text: ' + firstLine(st.texts[n]) : state));
+      b.lastChild.textContent = sideWord(n);
+      b.setAttribute('aria-label', cap(labelName(n)) + ', ' + (state === 'filled' ? 'has text: ' + firstLine(st.texts[n]) : state));
     });
   }
 
@@ -445,13 +494,13 @@
       var b = ev.target.closest('.cell'); if (!b || busy) return;
       var n = +b.dataset.n;
       if (st.used[n]) {
-        queue(function () { return markOpen([n]); }).then(refresh).then(function () { say('Label ' + n + ' is open again.'); });
+        queueChange(function () { return markOpen([n]); }).then(refresh).then(function () { say(cap(labelName(n)) + ' is open again.'); });
       } else if (st.filled[n]) {
-        ask('Label ' + n + ' has text. Clear it and mark the spot used?', 'Clear and mark used', function () {
-          queue(function () { return markUsed([n]); }).then(refresh).then(function () { say('Label ' + n + ' marked used.'); });
+        ask(cap(labelName(n)) + ' has text. Clear it and mark the spot used?', 'Clear and mark used', function () {
+          queueChange(function () { return markUsed([n]); }).then(refresh).then(function () { say(cap(labelName(n)) + ' marked used.'); });
         });
       } else {
-        queue(function () { return markUsed([n]); }).then(refresh).then(function () { say('Label ' + n + ' marked used.'); });
+        queueChange(function () { return markUsed([n]); }).then(refresh).then(function () { say(cap(labelName(n)) + ' marked used.'); });
       }
     });
 
@@ -460,32 +509,36 @@
       if (!(k >= 1 && k <= max)) { say('Enter a number from 1 to ' + max + '.', 'warn'); return; }
       var nums = []; for (var n = 1; n <= k; n++) if (!st.used[n]) nums.push(n);
       if (!nums.length) { say((k === 1 ? 'Label 1 was' : 'Labels 1–' + k + ' were') + ' already marked used.'); return; }
-      var run = function () { queue(function () { return markUsed(nums); }).then(refresh).then(function () { say('Marked ' + labelWord(nums) + ' used.'); }); };
+      var run = function () { queueChange(function () { return markUsed(nums); }).then(refresh).then(function () { say('Marked ' + labelWord(nums) + ' used.'); }); };
       var withText = nums.filter(function (n) { return st.filled[n]; });
       if (withText.length) ask(labelWord(withText).replace(/^l/, 'L') + ' ' + (withText.length === 1 ? 'has' : 'have') + ' text. Clear and mark them used?', 'Clear and mark used', run);
       else run();
     });
 
-    $('copy-btn').addEventListener('click', function () {
-      var k = Math.round(Number($('copies').value));
-      if (!(k >= 1)) { say('Enter how many copies you want.', 'warn'); return; }
-      queue(function () { return readState().then(apply).then(function () { return copyHere(k); }); })
+    function doCopy(k, all) {
+      queueChange(function () { return readState().then(apply).then(function () { return copyHere(k); }); })
         .then(function (res) {
           return refresh().then(function () {
-            var note = res.targets.length < k ? ' Only ' + plural(res.targets.length, 'open spot') + ' were left.' : '';
+            var note = !all && res.targets.length < k ? ' Only ' + plural(res.targets.length, 'open spot') + ' were left.' : '';
             say('Copied label ' + res.from + ' to ' + labelWord(res.targets) + '.' + (res.plain ? ' Pictures and mixed formatting weren’t copied.' : '') + note, note || res.plain ? 'warn' : '');
           });
         });
+    }
+    $('copy-btn').addEventListener('click', function () {
+      var k = Math.round(Number($('copies').value));
+      if (!(k >= 1)) { say('Enter how many copies you want.', 'warn'); return; }
+      doCopy(k, false);
     });
+    $('fill-all').addEventListener('click', function () { doCopy(total(), true); });
 
     $('printed-btn').addEventListener('click', function () {
       if (!keys(st.filled).length) { say('No labels have text to mark as printed.', 'warn'); return; }
-      queue(printedNow).then(function (nums) { return refresh().then(function () { say('Marked ' + labelWord(nums) + ' used. ' + plural(openList().length, 'open spot') + ' left.'); }); });
+      queueChange(printedNow).then(function (nums) { return refresh().then(function () { say('Marked ' + labelWord(nums) + ' used. ' + plural(openList().length, 'open spot') + ' left.'); }); });
       readPrintTime().then(function (ms) { if (ms) { lastPrintSeen = Math.max(lastPrintSeen || 0, ms); savePrintTime(lastPrintSeen); } }).catch(function () {});
     });
     $('undo-btn').addEventListener('click', function () {
       if (!undo) return;
-      queue(undoPrinted).then(refresh).then(function () { say('Undone. Those labels have their text back.'); });
+      queueChange(undoPrinted).then(refresh).then(function () { say('Undone. Those labels have their text back.'); });
     });
 
     $('reset-btn').addEventListener('click', function () {
@@ -493,7 +546,7 @@
       if (!used.length) { say('Every spot on this sheet is already open.'); return; }
       ask('Start a new sheet? All ' + plural(used.length, 'used spot') + ' become open again. Labels with text stay as they are.', 'Start new sheet', function () {
         undo = null;
-        queue(function () { return markOpen(used); }).then(refresh).then(function () { say('New sheet. All spots without text are open.'); });
+        queueChange(function () { return markOpen(used); }).then(refresh).then(function () { say('New sheet. All spots without text are open.'); });
       });
     });
 
@@ -565,14 +618,14 @@
       if (!nums.length) return;
       var when = timeOnly(ms);
       if (autoMarkOn()) {
-        queue(printedNow).then(function (done) {
+        queueChange(printedNow).then(function (done) {
           return refresh().then(function () {
             say('Word printed this sheet' + (when ? ' at ' + when : '') + ', so ' + labelWord(done) + (done.length === 1 ? ' is' : ' are') + ' now marked used. Click Undo if they didn’t come out right.');
           });
         });
       } else {
         ask('Word printed this sheet' + (when ? ' at ' + when : '') + '. Mark ' + labelWord(nums) + ' used?', 'Mark used', function () {
-          queue(printedNow).then(function (done) { return refresh().then(function () { say('Marked ' + labelWord(done) + ' used.'); }); });
+          queueChange(printedNow).then(function (done) { return refresh().then(function () { say('Marked ' + labelWord(done) + ' used.'); }); });
         });
       }
     });
@@ -813,16 +866,29 @@
   }
 
   function renderShip() {
-    var n = nextOpen();
-    var side = st.fmt.across === 2 && st.fmt.down === 1 ? (n === 1 ? ' (left)' : ' (right)') : '';
+    var n = nextOpen(), f = st.fmt, applies = sideApplies(f), side = applies ? getSide(f) : '';
     $('ship-target').textContent = n
-      ? 'Next open: label ' + n + side + '. Print the test page once to see which half of your sheet that is.'
+      ? 'Next open: ' + theName(n) + '.' + (applies && !side ? ' Print the test page once and answer below, and the panel will say top or bottom.' : '')
       : 'There are no open labels on this sheet. When you load a fresh sheet, click Start a new sheet.';
+    $('side-row').hidden = !applies;
+    $('side-q').textContent = side
+      ? 'Label 1 prints on the ' + side + ' half of your sheet. Change it if that’s wrong:'
+      : 'After printing the test page, which half of your sheet did Label 1 come out on?';
+    $('side-top').setAttribute('aria-pressed', String(side === 'top'));
+    $('side-bottom').setAttribute('aria-pressed', String(side === 'bottom'));
     $('ship-place').disabled = !n;
     $('addr-place').disabled = !n;
   }
 
   function wireShip() {
+    [$('side-top'), $('side-bottom')].forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (!st.fmt) return;
+        setSide(st.fmt, btn.dataset.side);
+        render();
+        say('Got it. Label 1 is the ' + btn.dataset.side + ' label on your sheet.');
+      });
+    });
     var input = $('ship-file');
     input.addEventListener('change', function () { handleFile(input.files && input.files[0]); input.value = ''; });
     $('ship-file-label').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
@@ -874,8 +940,8 @@
       if (!n) { say('There are no open labels on this sheet.', 'warn'); return; }
       var out = output();
       var b64 = out.canvas.toDataURL('image/png').split(',')[1];
-      queue(function () { return placeImage(n, b64, out.wIn * 72, out.hIn * 72); }).then(refresh).then(function () {
-        say('Placed on label ' + n + '. Print with ⌘P, then click I printed these.');
+      queueChange(function () { return placeImage(n, b64, out.wIn * 72, out.hIn * 72); }).then(refresh).then(function () {
+        say('Placed on ' + theName(n) + '. Print with ⌘P.');
       });
     });
 
@@ -889,9 +955,9 @@
       if (!n) { say('There are no open labels on this sheet.', 'warn'); return; }
       var fromText = from.value.replace(/\s+$/, '');
       saveFrom(fromText);
-      queue(function () { return placeAddress(n, fromText, to); }).then(refresh).then(function () {
+      queueChange(function () { return placeAddress(n, fromText, to); }).then(refresh).then(function () {
         $('to-addr').value = '';
-        say('Address label placed on label ' + n + '. You can edit it in the document.');
+        say('Address label placed on ' + theName(n) + '. You can edit it in the document.');
       });
     });
   }
