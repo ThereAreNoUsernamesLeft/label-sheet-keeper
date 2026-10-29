@@ -312,11 +312,48 @@
     return a;
   }
 
+  // Label content (a flat OOXML package) that is nothing but a table, as
+  // version 1.3's Copy left behind: replace the table with the content of its
+  // non-empty cells. Anything else comes back unchanged.
+  var W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  function kids(node, name) {
+    return Array.prototype.filter.call(node.childNodes, function (k) { return k.nodeType === 1 && k.namespaceURI === W && (!name || k.localName === name); });
+  }
+  function hasContent(node) {
+    if (Array.prototype.some.call(node.getElementsByTagNameNS(W, 't'), function (t) { return /\S/.test(t.textContent); })) return true;
+    return ['drawing', 'pict', 'object'].some(function (n) { return node.getElementsByTagNameNS(W, n).length > 0; });
+  }
+  function unwrapTable(ooxml) {
+    if (!ooxml || ooxml.indexOf('<w:tbl') < 0 || typeof DOMParser === 'undefined') return ooxml;
+    var doc;
+    try { doc = new DOMParser().parseFromString(ooxml, 'application/xml'); } catch (e) { return ooxml; }
+    if (!doc || doc.getElementsByTagName('parsererror').length) return ooxml;
+    var body = doc.getElementsByTagNameNS(W, 'body')[0];
+    if (!body) return ooxml;
+    var changed = false;
+    for (var round = 0; round < 3; round++) {
+      var main = kids(body).filter(function (k) { return k.localName === 'tbl' || k.localName === 'sdt' || (k.localName === 'p' && hasContent(k)); });
+      if (main.length !== 1 || main[0].localName !== 'tbl') break;
+      var keep = [];
+      kids(main[0], 'tr').forEach(function (tr) {
+        kids(tr, 'tc').forEach(function (tc) {
+          if (hasContent(tc)) kids(tc).forEach(function (k) { if (k.localName !== 'tcPr') keep.push(k); });
+        });
+      });
+      var sect = kids(body, 'sectPr')[0] || null;
+      kids(body).forEach(function (k) { if (k !== sect) body.removeChild(k); });
+      if (!keep.length) keep.push(doc.createElementNS(W, 'w:p'));
+      keep.forEach(function (k) { body.insertBefore(k, sect); });
+      changed = true;
+    }
+    return changed ? new XMLSerializer().serializeToString(doc) : ooxml;
+  }
+
   var api = {
     parseDelimited: parseDelimited, readXlsx: readXlsx, parseVCard: parseVCard,
     headerMap: headerMap, rowsToAddresses: rowsToAddresses, addressLines: addressLines, fixZip: fixZip, linesToFields: linesToFields,
     fontCss: fontCss, textHeight: textHeight, fits: fits, fitScale: fitScale, findLabelBorder: findLabelBorder,
-    FIELDS: FIELDS
+    unwrapTable: unwrapTable, FIELDS: FIELDS
   };
   root.LSK_TOOLS = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

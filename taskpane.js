@@ -312,6 +312,7 @@
         if (!tables.items.length) damage = 'The labels are missing from this document.';
         else if (tables.items[0].rowCount !== shape.rows) damage = 'Rows of labels were added or removed, so the labels no longer line up with your sheet.';
         else if (outside.length > spacers + 1 || outside.some(function (p) { return p.text.trim(); })) damage = 'There’s text or a blank line outside the labels, which pushes them out of place.';
+        else if (paras.items.some(function (p) { return p.tableNestingLevel > 1; })) damage = 'Some labels have a table inside them, which hides their text.';
         var base = { fmt: fmt, margins: lay.margins, applied: lay.applied, header: /▲/.test(header.text || ''), headerOther: !!(header.text || '').trim() && !/▲/.test(header.text || '') };
         if (damage) { base.kind = 'broken'; base.fixable = true; base.reason = damage; return base; }
 
@@ -395,7 +396,7 @@
       h.clear();
       if (on) {
         var p = h.paragraphs.getFirst();
-        p.insertText(S.ARROW_TEXT, 'Replace');
+        p.insertText(S.ARROW_TEXT, 'Start');
         p.alignment = 'Centered';
         p.spaceBefore = S.ARROW_BEFORE_PT;
         p.spaceAfter = 0;
@@ -515,12 +516,35 @@
     return Word.run(function (ctx) { return unlock(ctx, nums); }).then(function () { setSpots(nums, null); });
   }
 
-  // Remove the empty paragraph Word sometimes adds after pasted content.
-  function trimAfterPaste(ctx, bodies, wantCount) {
-    var lists = bodies.map(function (b) { var p = b.paragraphs; p.load('items/text'); return p; });
+  // A label's content: its paragraphs as OOXML, plus the layout of its last
+  // paragraph. (A cell body's own getOoxml() is the whole table row, so the
+  // content range is used. Word gives pasted content's last paragraph the
+  // layout of the paragraph it lands in, so that layout is put back after.)
+  var PARA_LAYOUT = ['alignment', 'leftIndent', 'rightIndent', 'firstLineIndent', 'spaceBefore', 'spaceAfter'];
+  function grabContent(body) {
+    var ox = body.getRange('Content').getOoxml(), ps = body.paragraphs;
+    ps.load('items/' + PARA_LAYOUT.join(',items/'));
+    return function () {   // call after ctx.sync()
+      var last = ps.items[ps.items.length - 1], lay = {};
+      if (last) PARA_LAYOUT.forEach(function (k) { lay[k] = last[k]; });
+      return { ooxml: ox.value, count: ps.items.length, last: lay };
+    };
+  }
+  // items: [{ n, c }] where c came from grabContent.
+  function putContents(ctx, items) {
+    var lists = items.map(function (it) {
+      var b = cellBody(ctx, it.n);
+      b.clear();
+      b.insertOoxml(T.unwrapTable(it.c.ooxml), 'Replace');
+      var ps = b.paragraphs; ps.load('items/text');
+      return ps;
+    });
     return ctx.sync().then(function () {
-      lists.forEach(function (p) {
-        if (p.items.length > wantCount) { var last = p.items[p.items.length - 1]; if (!last.text) last.delete(); }
+      items.forEach(function (it, i) {
+        var ps = lists[i].items, last = ps[ps.length - 1];
+        // Some versions of Word add an empty paragraph after pasted content.
+        if (ps.length > it.c.count && last && !last.text) { last.delete(); last = ps[ps.length - 2]; }
+        if (last) PARA_LAYOUT.forEach(function (k) { if (it.c.last && it.c.last[k] !== undefined) last[k] = it.c.last[k]; });
       });
       return ctx.sync();
     });
@@ -529,11 +553,10 @@
   // Copy one label's content (by number) to other labels.
   function copyFrom(src, targets) {
     return Word.run(function (ctx) {
-      var sb = cellBody(ctx, src), ox = sb.getOoxml(), sp = sb.paragraphs;
-      sp.load('items');
+      var get = grabContent(cellBody(ctx, src));
       return ctx.sync().then(function () {
-        var bodies = targets.map(function (t) { var b = cellBody(ctx, t); b.insertOoxml(ox.value, 'Replace'); return b; });
-        return ctx.sync().then(function () { return trimAfterPaste(ctx, bodies, sp.items.length); });
+        var c = get();
+        return putContents(ctx, targets.map(function (n) { return { n: n, c: c }; }));
       });
     });
   }
@@ -577,25 +600,32 @@
     var alignOf = function (a) { return a === 'center' ? 'Centered' : a === 'right' ? 'Right' : 'Left'; };
     return Word.run(function (ctx) {
       items.forEach(function (item) {
-        var n = item.n, paras = item.paras || [], pic = item.pic;
-        var body = cellBody(ctx, n);
+        var paras = item.paras || [], pic = item.pic;
+        var body = cellBody(ctx, item.n);
         body.clear();
-        var first = body.paragraphs.getFirst();
-        if (pic) {
-          var img = first.insertInlinePictureFromBase64(pic.b64, 'Start');
-          img.width = pic.w; img.height = pic.h;
-          first.alignment = alignOf(pic.align);
-          first.spaceBefore = topPt; first.spaceAfter = 2;
-        }
-        paras.forEach(function (p, i) {
-          var para;
-          if (i === 0 && !pic) { para = first; para.insertText(p.t, 'Replace'); }
-          else para = body.insertParagraph(p.t, 'End');
-          para.alignment = alignOf(p.align);
-          para.spaceBefore = p.before !== undefined ? p.before : (i === 0 && !pic ? topPt : 0);
+        // One slot per paragraph: the picture (if any), then each line of text.
+        var slots = (pic ? [{ pic: pic }] : []).concat(paras.map(function (p, i) { return { p: p, i: i }; }));
+        // Word for Mac joins paragraphs added at the end of a cell, so new
+        // paragraphs go in before the cell's own (last) paragraph, which takes
+        // the last slot.
+        var cellPara = body.paragraphs.getFirst();
+        slots.forEach(function (s, k) {
+          var text = s.p ? String(s.p.t || '') : '';
+          var para = k === slots.length - 1 ? cellPara : cellPara.insertParagraph(text, 'Before');
+          if (para === cellPara && text) para.insertText(text, 'Start');
           para.spaceAfter = 0;
-          para.leftIndent = p.indent || 0;
           para.firstLineIndent = 0;
+          if (s.pic) {
+            var img = para.insertInlinePictureFromBase64(s.pic.b64, 'Start');
+            img.width = s.pic.w; img.height = s.pic.h;
+            para.alignment = alignOf(s.pic.align);
+            para.spaceBefore = topPt; para.spaceAfter = 2; para.leftIndent = 0;
+            return;
+          }
+          var p = s.p;
+          para.alignment = alignOf(p.align);
+          para.spaceBefore = p.before !== undefined ? p.before : (s.i === 0 && !pic ? topPt : 0);
+          para.leftIndent = p.indent || 0;
           para.font.set({ name: p.font || f.font.name, size: p.size || f.font.size, bold: !!p.b, italic: !!p.i, color: p.color || '#000000' });
         });
       });
@@ -607,9 +637,9 @@
   function markPrinted() {
     var nums = keys(st.ready);
     return Word.run(function (ctx) {
-      var oxs = nums.map(function (n) { return cellBody(ctx, n).getOoxml(); });
+      var gets = nums.map(function (n) { return grabContent(cellBody(ctx, n)); });
       return ctx.sync().then(function () {
-        undo = { nums: nums, cells: nums.map(function (n, i) { return { n: n, ooxml: oxs[i].value }; }), at: Date.now() };
+        undo = { nums: nums, cells: nums.map(function (n, i) { return { n: n, c: gets[i]() }; }), at: Date.now() };
         return lockAsUsed(ctx, nums);
       });
     }).then(function () {
@@ -624,7 +654,7 @@
       var last = undo.cells[undo.cells.length - 1];
       if (last) {
         store(LS.last + st.fmt.id, null);
-        storeJson(LS.last + st.fmt.id, { ooxml: last.ooxml.length < 3e6 ? last.ooxml : '', paras: (last.ooxml.match(/<w:p[ >]/g) || []).length, text: firstLine(st.texts[last.n]) || 'picture', at: at });
+        storeJson(LS.last + st.fmt.id, { v: 2, c: last.c.ooxml.length < 3e6 ? last.c : null, text: firstLine(st.texts[last.n]) || 'picture', at: at });
       }
       return nums;
     });
@@ -633,10 +663,7 @@
   function undoPrinted() {
     var u = undo;
     return Word.run(function (ctx) {
-      return unlock(ctx, u.nums).then(function () {
-        u.cells.forEach(function (c) { cellBody(ctx, c.n).insertOoxml(c.ooxml, 'Replace'); });
-        return ctx.sync();
-      });
+      return unlock(ctx, u.nums).then(function () { return putContents(ctx, u.cells); });
     }).then(function () {
       var h = history();
       if (h.length && h[0].at === u.at) { h.shift(); setSetting(DOC.history, h); }
@@ -648,13 +675,9 @@
 
   function reprintLast() {
     var last = storeJson(LS.last + st.fmt.id), n = nextOpen();
-    if (!last || !last.ooxml) return Promise.reject(userError('There’s no saved label to reprint yet.'));
+    if (!last || last.v !== 2 || !last.c) return Promise.reject(userError('There’s no saved label to reprint yet.'));
     if (!n) return Promise.reject(userError('There are no open labels on this sheet.'));
-    return Word.run(function (ctx) {
-      var b = cellBody(ctx, n);
-      b.insertOoxml(last.ooxml, 'Replace');
-      return ctx.sync().then(function () { return trimAfterPaste(ctx, [b], last.paras || 99); });
-    }).then(function () { return n; });
+    return Word.run(function (ctx) { return putContents(ctx, [{ n: n, c: last.c }]); }).then(function () { return n; });
   }
 
   // ---------- making documents ----------
@@ -721,12 +744,13 @@
                   if (!text) return;
                   var n = intact ? S.labelAt(f, ri, ci) : 0;
                   if (intact && (!n || used[n])) return;
-                  grabbed.push({ n: n, text: text, ox: t.getCell(ri, ci).body.getOoxml() });
+                  grabbed.push({ n: n, text: text, get: grabContent(t.getCell(ri, ci).body) });
                 });
               });
             }
             return ctx.sync();
           }).then(function () {
+            grabbed.forEach(function (g) { g.c = g.get(); });
             // Without an intact table, match content to labels by its first line.
             var taken = {};
             grabbed.forEach(function (g) {
@@ -766,7 +790,8 @@
             var prev = st.fmt; st.fmt = f;
             var usedNums = keys(used);
             return lockAsUsed(ctx, usedNums).then(function () {
-              grabbed.forEach(function (g) { if (g.n) cellBody(ctx, g.n).insertOoxml(g.ox.value, 'Replace'); });
+              return putContents(ctx, grabbed.filter(function (g) { return g.n; }));
+            }).then(function () {
               ctx.document.properties.customProperties.add(S.LAYOUT_PROP, JSON.stringify({ v: 2, top: margins.top, left: margins.left, nx: nudge.x, ny: nudge.y }));
               report.used = usedNums.length;
               report.ready = grabbed.filter(function (g) { return g.n; }).length;
@@ -1342,7 +1367,7 @@
     }
     // Reprint last label
     var last = storeJson(LS.last + f.id), rp = $('reprint-btn');
-    rp.hidden = !(last && last.ooxml && n);
+    rp.hidden = !(last && last.v === 2 && last.c && n);
     if (!rp.hidden) rp.textContent = 'Reprint last label (“' + last.text + '”)';
   }
 

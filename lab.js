@@ -47,54 +47,16 @@
   }
   var src = Number(window.LSK_LAB_SRC || 5);
   log('Lab ' + new Date().toLocaleTimeString() + ' fmt ' + f.id + ' src L' + src + ' ua ' + navigator.userAgent.slice(0, 60));
+  var PNG = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAICAIAAAB/FOjAAAAAFUlEQVR4nGNgYGD4z0AEQCRDg8YGAJ4GAP8gOZBRAAAAAElFTkSuQmCC';
   Promise.resolve()
-    .then(step('E1', function (ctx) {
-      var b = cell(ctx, src), a = b.getOoxml();
-      var r = b.getRange('Content'), c = r.getOoxml();
-      var ps = b.paragraphs; ps.load('items');
-      return ctx.sync().then(function () {
-        log('E1 body.getOoxml: ' + shape(a.value));
-        log('E1 range(Content).getOoxml: ' + shape(c.value));
-        var r2 = ps.items[0].getRange('Start').expandTo(ps.items[ps.items.length - 1].getRange('End')), d = r2.getOoxml();
-        return ctx.sync().then(function () { log('E1 paras range.getOoxml: ' + shape(d.value)); window.LSK_LAB_OX = { body: a.value, content: c.value, paras: d.value }; });
-      });
-    }))
-    .then(step('E2', function (ctx) {
-      var b = cell(ctx, 28); b.clear(); b.insertOoxml(pkg(P3), 'Replace');
-      return ctx.sync().then(function () { return report(ctx, 28, 'E2 ooxml Replace'); });
-    }))
-    .then(step('E3', function (ctx) {
-      var b = cell(ctx, 29); b.clear(); b.insertOoxml(pkg(P3), 'Start');
-      return ctx.sync().then(function () { return report(ctx, 29, 'E3 ooxml Start'); });
-    }))
-    .then(step('E4', function (ctx) {
+    .then(step('E7', function (ctx) {
       var b = cell(ctx, 30); b.clear();
       var p0 = b.paragraphs.getFirst();
-      var a = p0.insertParagraph('AAA small', 'Before'); a.font.set({ size: 6, bold: true }); a.leftIndent = 0;
-      var bb = p0.insertParagraph('BBB plain', 'Before'); bb.font.set({ size: 10, bold: false }); bb.leftIndent = 0;
-      p0.insertText('CCC indent', 'Start'); p0.font.set({ size: 12, bold: false }); p0.leftIndent = 36;
-      return ctx.sync().then(function () { return report(ctx, 30, 'E4 api Before'); });
-    }))
-    .then(step('E5', function (ctx) {
-      var ps = cell(ctx, 28).paragraphs; ps.load('items/text');
-      return ctx.sync().then(function () {
-        var last = ps.items[ps.items.length - 1];
-        if (ps.items.length > 3 && !last.text) { last.delete(); return ctx.sync().then(function () { return report(ctx, 28, 'E5 after delete last'); }); }
-        log('E5 nothing to delete');
-      });
-    }))
-    .then(step('E6', function (ctx) {
-      var b = cell(ctx, 25), p = b.paragraphs; p.load('items');
-      return ctx.sync().then(function () {
-        var p1 = p.items[0];
-        b.clear();
-        return ctx.sync();
-      }).then(function () {
-        var p0 = b.paragraphs.getFirst();
-        p0.insertText('ONE', 'Replace');
-        b.insertParagraph('TWO', 'End');
-        return ctx.sync().then(function () { return report(ctx, 25, 'E6 old way (Replace + End)'); });
-      });
+      var a = p0.insertParagraph('', 'Before');
+      var img = a.insertInlinePictureFromBase64(PNG, 'Start'); img.width = 40; img.height = 20;
+      p0.insertText('After picture', 'Start');
+      var pics = b.inlinePictures; pics.load('items');
+      return ctx.sync().then(function () { log('E7 pictures in L30: ' + pics.items.length); return report(ctx, 30, 'E7 picture paragraph'); });
     }))
     .then(function () { log('done. Click to close.'); });
 })();
