@@ -1,62 +1,43 @@
-/* Temporary checks of how Word for Mac handles label content. Loaded only by
-   triple-clicking the version number in "About this panel". Will be removed. */
+/* Temporary test helper, loaded only by triple-clicking "About this panel".
+   On a shipping test sheet it loads sample data; on any other test sheet it
+   removes what testing left in this Mac's panel storage. Will be removed. */
 (function () {
   'use strict';
-  var S = window.LSK_SHEET, out = [];
-  var st = window.LSK_TEST && window.LSK_TEST.st();
-  var box = document.getElementById('lsk-lab') || document.createElement('pre');
-  box.id = 'lsk-lab';
-  box.style.cssText = 'position:fixed;left:4px;right:4px;top:4px;bottom:4px;z-index:9999;margin:0;padding:6px;overflow:auto;background:#fff;color:#000;font:10px/1.25 Menlo,monospace;white-space:pre-wrap;border:2px solid #c00';
+  var out = [], st = window.LSK_TEST && window.LSK_TEST.st();
+  var box = document.createElement('pre');
+  box.style.cssText = 'position:fixed;left:4px;right:4px;top:4px;z-index:9999;margin:0;padding:6px;background:#fff;color:#000;font:10px/1.25 Menlo,monospace;white-space:pre-wrap;border:2px solid #c00';
   box.onclick = function () { box.remove(); };
   document.body.appendChild(box);
-  function log(s) { out.push(s); box.textContent = out.join('\n'); }
+  function log(s) { out.push(s); box.textContent = out.join('\n') + '\n(click to close)'; }
+  function json(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+  var myId = Office.context.document.settings.get('lskSheetId');
+  var ids = json('lsk.labIds') || [];
+  if (myId && ids.indexOf(myId) < 0) { ids.push(myId); localStorage.setItem('lsk.labIds', JSON.stringify(ids)); }
   if (!st || !st.fmt) { log('No sheet.'); return; }
-  var f = st.fmt;
-  function cell(ctx, n) { var c = S.cellOf(f, n); return ctx.document.body.tables.getFirst().getCell(c.row, c.cell).body; }
-  function shape(xml) {
-    var m = xml.match(/<w:body>([\s\S]*)<\/w:body>/), b = m ? m[1] : '';
-    var cnt = function (re) { return (b.match(re) || []).length; };
-    return 'len ' + xml.length + ' tbl ' + cnt(/<w:tbl>/g) + ' tr ' + cnt(/<w:tr[ >]/g) + ' tc ' + cnt(/<w:tc>/g) + ' p ' + cnt(/<w:p[ >]/g) +
-      ' first ' + (b.replace(/^\s+/, '').slice(0, 12));
+
+  if (st.fmt.shipping) {
+    document.getElementById('to-addr').value = 'Returns Center\n100 Warehouse Rd\nSeattle, WA 98109';
+    var c = document.createElement('canvas'); c.width = 800; c.height = 1200;
+    var x = c.getContext('2d');
+    x.fillStyle = '#fff'; x.fillRect(0, 0, 800, 1200);
+    x.strokeStyle = '#000'; x.lineWidth = 8; x.strokeRect(80, 80, 640, 1040);
+    x.fillStyle = '#000'; x.font = 'bold 48px Arial'; x.fillText('TEST LABEL', 260, 240);
+    x.font = '32px Arial'; x.fillText('Not a real shipping label', 220, 320);
+    for (var i = 0; i < 12; i++) x.fillRect(160 + i * 40, 900, i % 3 ? 14 : 24, 140);
+    c.toBlob(function (blob) {
+      window.LSK_TEST.handleFile(new File([blob], 'test-label.png', { type: 'image/png' }));
+      log('Loaded a test label picture and a Ship to address. Test sheet ids: ' + ids.length);
+    }, 'image/png');
+    return;
   }
-  function pkg(paras) {
-    var body = paras.map(function (p, i) { return S.paraXml(f, p, i === 0); }).join('');
-    return '<pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage">' +
-      '<pkg:part pkg:name="/_rels/.rels" pkg:contentType="application/vnd.openxmlformats-package.relationships+xml"><pkg:xmlData>' +
-      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' +
-      '</pkg:xmlData></pkg:part>' +
-      '<pkg:part pkg:name="/word/document.xml" pkg:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"><pkg:xmlData>' +
-      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' + body + '</w:body></w:document>' +
-      '</pkg:xmlData></pkg:part></pkg:package>';
-  }
-  var P3 = [{ t: 'AAA small', size: 6, b: true }, { t: 'BBB plain', size: 10 }, { t: 'CCC indent', size: 12, indent: 36 }];
-  function report(ctx, n, tag) {
-    var ps = cell(ctx, n).paragraphs;
-    ps.load('items/text,items/font/size,items/font/bold,items/leftIndent,items/tableNestingLevel,items/spaceBefore');
-    return ctx.sync().then(function () {
-      log(tag + ' L' + n + ': ' + ps.items.length + ' paras');
-      ps.items.forEach(function (p) {
-        log('   [' + JSON.stringify(p.text) + ' sz' + p.font.size + (p.font.bold ? ' B' : '') + ' ind' + p.leftIndent + ' bef' + p.spaceBefore + ' lvl' + p.tableNestingLevel + ']');
-      });
-    });
-  }
-  function step(name, fn) {
-    return function () {
-      return Word.run(fn).catch(function (e) { log(name + ' ERROR ' + (e && (e.code || '') + ' ' + (e.message || e))); });
-    };
-  }
-  var src = Number(window.LSK_LAB_SRC || 5);
-  log('Lab ' + new Date().toLocaleTimeString() + ' fmt ' + f.id + ' src L' + src + ' ua ' + navigator.userAgent.slice(0, 60));
-  var PNG = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAICAIAAAB/FOjAAAAAFUlEQVR4nGNgYGD4z0AEQCRDg8YGAJ4GAP8gOZBRAAAAAElFTkSuQmCC';
-  Promise.resolve()
-    .then(step('E7', function (ctx) {
-      var b = cell(ctx, 30); b.clear();
-      var p0 = b.paragraphs.getFirst();
-      var a = p0.insertParagraph('', 'Before');
-      var img = a.insertInlinePictureFromBase64(PNG, 'Start'); img.width = 40; img.height = 20;
-      p0.insertText('After picture', 'Start');
-      var pics = b.inlinePictures; pics.load('items');
-      return ctx.sync().then(function () { log('E7 pictures in L30: ' + pics.items.length); return report(ctx, 30, 'E7 picture paragraph'); });
-    }))
-    .then(function () { log('done. Click to close.'); });
+
+  // Clean up after testing.
+  var reg = json('lsk.sheets') || {}, removed = [];
+  ids.forEach(function (id) { if (reg[id]) { delete reg[id]; removed.push('sheet ' + id); } });
+  localStorage.setItem('lsk.sheets', JSON.stringify(reg));
+  ['lsk.last.' + st.fmt.id, 'lsk.last.shipping-2-sideways', 'lsk.design', 'lsk.tableDraft', 'lsk.tableInfo', 'lsk.labIds'].forEach(function (k) {
+    if (localStorage.getItem(k) !== null) { localStorage.removeItem(k); removed.push(k); }
+  });
+  log('Removed: ' + (removed.join(', ') || 'nothing'));
+  log('Sheets still listed: ' + Object.keys(reg).map(function (k) { return reg[k].file || '(unsaved)'; }).join(', '));
 })();
