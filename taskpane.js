@@ -1611,6 +1611,11 @@
       doCopy(k, false);
     });
     $('fill-all').addEventListener('click', function () { doCopy(total(), true); });
+    // TEMPORARY: triple-click "About this panel" details to run Word checks (lab.js).
+    $('about-list').addEventListener('click', function (e) {
+      if (e.detail < 3) return;
+      var s = document.createElement('script'); s.src = 'lab.js?t=' + Date.now(); document.body.appendChild(s);
+    });
     $('fit-btn').addEventListener('click', function () {
       queue(function () { return readState().then(apply); }).then(function () {
         var n = st.here && st.ready[st.here] ? st.here : 0;
