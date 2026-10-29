@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Label Sheet Keeper for Word</title>
+<link rel="icon" href="assets/icon-32.png">
+<style>
+/* Single readable column: what it is, then the setup steps in order. */
+:root{--bg:#F3F6F5;--surface:#FFFFFF;--line:#D3DAD7;--ink:#17212A;--muted:#566570;--accent:#0D6B66;--accent-soft:#DCEFEC;
+  --f:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;--f-mono:ui-monospace,Menlo,Consolas,monospace;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#161B1E;--surface:#1F262A;--line:#334047;--ink:#E4EAEC;--muted:#9AA9AF;--accent:#5BC4B9;--accent-soft:#1B3D3B;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 var(--f)}
+main{max-width:680px;margin:0 auto;padding:40px 16px 64px;display:grid;gap:28px}
+h1{margin:0;font-size:clamp(28px,5vw,36px);line-height:1.1;letter-spacing:-.015em;text-wrap:balance}
+.lede{margin:10px 0 0;color:var(--muted);font-size:17px}
+h2{margin:0 0 10px;font-size:19px}
+section{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
+ol{margin:0;padding-left:22px;display:grid;gap:8px}
+code{font-family:var(--f-mono);font-size:.88em;background:var(--accent-soft);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+a{color:var(--accent)}
+.btn{display:inline-block;background:var(--accent);color:var(--surface);font-weight:600;text-decoration:none;padding:10px 16px;border-radius:8px}
+.sizes{margin:0;padding-left:20px}
+.top{display:flex;gap:16px;align-items:center}
+.top img{width:56px;height:56px;border-radius:12px;flex:none}
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <img src="assets/icon-128.png" alt="">
+    <div>
+      <h1>Label Sheet Keeper for Word</h1>
+      <p class="lede">A Word side panel that remembers which labels on a sheet are used, so you can finish partly used sheets.</p>
+    </div>
+  </header>
+
+  <section>
+    <h2>Set it up on your Mac (once)</h2>
+    <ol>
+      <li><a class="btn" href="manifest.xml" download>Download manifest.xml</a></li>
+      <li>Quit Word.</li>
+      <li>In Finder, press <b>⌘⇧G</b> and go to <code>~/Library/Containers/com.microsoft.Word/Data/Documents/</code></li>
+      <li>If there's no folder named <code>wef</code>, make one (File › New Folder).</li>
+      <li>Put <code>manifest.xml</code> inside <code>wef</code>.</li>
+      <li>Open Word and any document. Click <b>Label Sheet</b> on the Home tab. If it isn't there, click <b>Add-ins</b> on the Home tab and choose <b>Label Sheet Keeper</b>.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Use it</h2>
+    <ol>
+      <li>In the panel, pick a size and click <b>Make a new label sheet</b>. Save the new document.</li>
+      <li>Open the panel in that document and click the spots already peeled off your sheet.</li>
+      <li>Type a label, leave the cursor in it, and click <b>Copy to next open</b>.</li>
+      <li>Print with ⌘P at 100% scale. Then click <b>I printed these</b> and save.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Label sizes</h2>
+    <ul class="sizes">
+      <li>1″ × 2⅝″, 30 per sheet (fits Avery 5160 / 8160). <a href="templates/avery-5160.docx">Blank sheet</a></li>
+      <li>8½″ × 5½″, 2 per sheet (fits Avery 5126 / 8126). <a href="templates/half-sheet-2.docx">Blank sheet</a></li>
+    </ul>
+    <p>To add a size, edit <code>formats.js</code> in the GitHub repository. Instructions are at the top of that file.</p>
+  </section>
+</main>
+</body>
+</html>

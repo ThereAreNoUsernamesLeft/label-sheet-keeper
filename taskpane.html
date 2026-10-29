@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=Edge">
+<title>Label Sheet Keeper</title>
+<link rel="stylesheet" href="taskpane.css?v=1">
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="formats.js?v=1"></script>
+<script src="sheetdoc.js?v=1"></script>
+</head>
+<body>
+<main class="pane">
+  <header class="head">
+    <h1>Label Sheet Keeper</h1>
+    <p id="fmt-name" class="sub"></p>
+  </header>
+
+  <section id="v-loading" class="view"><p class="hint">Reading the document…</p></section>
+
+  <section id="v-outside" class="view" hidden>
+    <p>This panel runs inside Microsoft Word. Open Word, then click <b>Label Sheet</b> on the Home tab.</p>
+    <p class="hint">Setup steps are on the <a href="./">Label Sheet Keeper page</a>.</p>
+  </section>
+
+  <section id="v-old" class="view" hidden>
+    <p>This version of Word is too old for the panel. Update Word from Help › Check for Updates, then reopen it.</p>
+  </section>
+
+  <section id="v-none" class="view" hidden>
+    <p class="lead">This document isn’t a label sheet yet. Pick your label size to make one.</p>
+    <div id="fmt-list" class="fmt-list" role="radiogroup" aria-label="Label size"></div>
+    <button type="button" id="create-btn" class="btn primary wide">Make a new label sheet</button>
+    <p class="hint">A new Word document opens, set up for that sheet. In the new window, click <b>Label Sheet</b> on the Home tab.</p>
+    <p class="hint">If nothing opens, download a blank sheet instead: <span id="tpl-links"></span></p>
+    <p id="fmt-problems" class="warn" hidden></p>
+    <button type="button" id="back-btn" class="btn link" hidden>Back to this sheet</button>
+  </section>
+
+  <section id="v-broken" class="view" hidden>
+    <p id="broken-msg"></p>
+    <button type="button" id="broken-new" class="btn ghost">Make a new label sheet</button>
+  </section>
+
+  <section id="v-sheet" class="view" hidden>
+    <div class="map-wrap">
+      <div id="map" class="map" role="group" aria-label="Your label sheet"></div>
+    </div>
+    <div id="tally" class="tally"></div>
+    <div id="confirm" class="confirm" hidden>
+      <p id="confirm-msg"></p>
+      <div class="row">
+        <button type="button" id="confirm-yes" class="btn danger sm"></button>
+        <button type="button" id="confirm-no" class="btn ghost sm">Cancel</button>
+      </div>
+    </div>
+    <p id="say" class="say" role="status" aria-live="polite"></p>
+
+    <div class="step">
+      <h2><span class="n">1</span>Mark peeled-off labels</h2>
+      <p class="hint">Click a spot on the map to mark it used. Click it again to make it open.</p>
+      <div class="row">
+        <label for="first-n">Mark the first</label>
+        <input id="first-n" type="number" min="1" value="3" inputmode="numeric">
+        <span>used</span>
+        <button type="button" id="first-btn" class="btn ghost sm">Mark</button>
+      </div>
+    </div>
+
+    <div class="step">
+      <h2><span class="n">2</span>Fill labels</h2>
+      <p class="hint">Type and format a label in the document. Leave the cursor in it, then copy it to the next open spots.</p>
+      <p id="here" class="here"></p>
+      <div class="row">
+        <label for="copies">Copies</label>
+        <input id="copies" type="number" min="1" value="1" inputmode="numeric">
+        <button type="button" id="copy-btn" class="btn ghost">Copy to next open</button>
+      </div>
+    </div>
+
+    <div class="step">
+      <h2><span class="n">3</span>Print</h2>
+      <p class="hint">Print with ⌘P. When the labels come out right, mark them used so the spots are cleared for next time.</p>
+      <button type="button" id="printed-btn" class="btn primary wide">I printed these</button>
+      <div id="undo-row" class="row" hidden>
+        <span id="undo-msg" class="hint"></span>
+        <button type="button" id="undo-btn" class="btn ghost sm">Undo</button>
+      </div>
+    </div>
+
+    <details class="more">
+      <summary>Print history</summary>
+      <ul id="hist" class="hist"></ul>
+    </details>
+
+    <footer class="foot">
+      <button type="button" id="reset-btn" class="btn link">Start a new sheet</button>
+      <button type="button" id="other-btn" class="btn link">Make a different size</button>
+      <button type="button" id="refresh-btn" class="btn link">Refresh</button>
+    </footer>
+  </section>
+
+  <p id="error" class="error" role="alert" hidden></p>
+</main>
+<script src="taskpane.js?v=1"></script>
+</body>
+</html>

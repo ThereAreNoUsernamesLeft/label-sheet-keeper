@@ -1,0 +1,95 @@
+/* Side panel for Word: a narrow column (about 320px). The sheet map leads; steps follow in order. */
+:root{
+  --bg:#F5F7F6; --surface:#FFFFFF; --line:#D3DAD7; --ink:#17212A; --muted:#566570;
+  --accent:#0D6B66; --accent-ink:#FFFFFF; --accent-soft:#DCEFEC;
+  --warn:#9A430F; --warn-soft:#F7E6DA; --danger:#A33A1E;
+  --sheet:#F8FAFA; --label:#FFFFFF; --die:#CCD4D6; --liner:#D1DADF; --liner-2:#B5C2C8;
+  --label-ink:#101417; --label-num:#8A979E; --paper-accent:#0D6B66; --here:#D98A1E;
+  --f:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  --f-label:Arial,Helvetica,sans-serif;
+  --f-mono:ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#1E2326; --surface:#272E32; --line:#3A454B; --ink:#E4EAEC; --muted:#9AA9AF;
+    --accent:#5BC4B9; --accent-ink:#06201E; --accent-soft:#1B3D3B;
+    --warn:#F0A36D; --warn-soft:#3B2719; --danger:#F08A6A;
+    --sheet:#DCE2E2; --label:#EEF2F2; --die:#B6C0C2; --liner:#A7B4B9; --liner-2:#8F9EA4;
+    --label-ink:#101417; --label-num:#6B7980; --paper-accent:#0D6B66; --here:#C9761A;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.45 var(--f)}
+[hidden]{display:none!important}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.pane{padding:14px 14px 24px;display:grid;gap:12px;max-width:520px}
+.head h1{margin:0;font-size:17px;font-weight:700;letter-spacing:-.01em}
+.sub{margin:2px 0 0;color:var(--muted);font-size:12px}
+.view{display:grid;gap:12px}
+.lead{margin:0;font-size:13.5px}
+.hint{margin:0;color:var(--muted);font-size:12.5px}
+.warn{margin:0;color:var(--warn);font-size:12.5px}
+.error{margin:0;padding:10px 12px;border-radius:8px;background:var(--warn-soft);color:var(--ink);border:1px solid var(--warn);font-size:12.5px}
+
+.btn{font:600 13px var(--f);border-radius:7px;padding:8px 12px;border:1px solid transparent;cursor:pointer;line-height:1.2;min-height:34px}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:var(--surface);border-color:var(--line);color:var(--ink)}
+.btn.ghost:hover{border-color:var(--muted)}
+.btn.danger{background:var(--danger);color:#fff}
+.btn.sm{padding:5px 10px;min-height:28px;font-size:12.5px}
+.btn.wide{width:100%}
+.btn.link{background:none;border:0;padding:0;min-height:0;color:var(--muted);font-weight:500;font-size:12.5px;text-decoration:underline;text-underline-offset:2px}
+.btn:disabled{opacity:.5;cursor:default}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+input[type=number]{width:56px;font:inherit;padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);min-height:28px}
+
+.fmt-list{display:grid;gap:8px}
+.fmt{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:start;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);cursor:pointer}
+.fmt input{margin:2px 0 0;accent-color:var(--accent);grid-row:span 2}
+.fmt b{font-size:13px}
+.fmt span{color:var(--muted);font-size:12px;grid-column:2}
+.fmt:has(input:checked){border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+
+.map-wrap{display:flex;justify-content:center}
+.map{container-type:inline-size;position:relative;width:100%;max-width:300px;background:var(--sheet);border-radius:3px;box-shadow:0 1px 2px rgba(0,0,0,.08),0 6px 18px rgba(0,0,0,.10)}
+.cell{position:absolute;border:0;margin:0;padding:0;background:var(--label);box-shadow:inset 0 0 0 1px var(--die);cursor:pointer;overflow:hidden;color:var(--label-ink);text-align:left;font-family:var(--f-label);-webkit-appearance:none;appearance:none}
+.cell .t{position:absolute;inset:6% 4%;font-size:max(5px,2.1cqw);line-height:1.2;overflow:hidden;white-space:pre-line}
+.cell .num{position:absolute;right:2.5%;bottom:4%;font:500 max(7px,2.6cqw)/1 var(--f-mono);color:var(--label-num)}
+.cell.used{background:repeating-linear-gradient(135deg,var(--liner) 0 4px,var(--liner-2) 4px 5.5px);box-shadow:inset 0 0 0 1px var(--liner-2)}
+.cell.used .num{color:var(--label-ink);opacity:.55}
+.cell.filled{box-shadow:inset 0 0 0 2px var(--paper-accent)}
+.cell.filled .num{color:var(--paper-accent);font-weight:700}
+.cell.here{outline:2px solid var(--here);outline-offset:-1px;z-index:1}
+.cell.open:hover{background:var(--liner)}
+.cell:focus-visible{outline:2px solid var(--accent);outline-offset:1px;z-index:2}
+
+.tally{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 14px;font-size:12px}
+.tally span{display:inline-flex;align-items:center;gap:5px}
+.tally b{font-family:var(--f-mono);font-weight:500}
+.sw{width:18px;height:10px;border-radius:2px;display:inline-block}
+.sw.open{background:var(--label);box-shadow:inset 0 0 0 1px var(--die)}
+.sw.used{background:repeating-linear-gradient(135deg,var(--liner) 0 3px,var(--liner-2) 3px 4.5px);box-shadow:inset 0 0 0 1px var(--liner-2)}
+.sw.filled{background:var(--label);box-shadow:inset 0 0 0 2px var(--paper-accent)}
+
+.say{margin:0;min-height:1.45em;text-align:center;font-size:12.5px}
+.say.warn{color:var(--warn)}
+.confirm{display:grid;gap:8px;padding:10px 12px;border-radius:8px;border:1px solid var(--warn);background:var(--warn-soft)}
+.confirm p{margin:0}
+
+.step{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.step h2{margin:0;font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:8px}
+.step .n{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font:700 11.5px var(--f-mono)}
+.here{margin:0;font-size:12.5px}
+.here b{color:var(--here)}
+
+.more{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:10px 12px}
+.more summary{cursor:pointer;font-weight:600}
+.hist{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:8px}
+.hist li{display:grid;gap:1px;font-size:12.5px}
+.hist .when{font-family:var(--f-mono);font-size:11.5px;color:var(--muted)}
+.hist .txt{color:var(--muted);overflow-wrap:anywhere}
+.foot{display:flex;flex-wrap:wrap;gap:8px 16px;justify-content:center;padding-top:4px}

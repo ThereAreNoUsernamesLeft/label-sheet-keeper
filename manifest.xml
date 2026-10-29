@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Label Sheet Keeper — setup file for Word.
+  Copy this file into Word's add-in folder on your Mac (see README.md).
+  It only tells Word the add-in's name and where its panel lives on GitHub,
+  so you don't need to change it when the panel is updated.
+-->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+           xsi:type="TaskPaneApp">
+  <Id>8d491c85-a76d-4d26-a6f5-b7b2dd4a1711</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Label Sheet Keeper</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Label Sheet Keeper"/>
+  <Description DefaultValue="Keeps track of which labels on a sheet are used and fills the open ones."/>
+  <IconUrl DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/assets/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/assets/icon-64.png"/>
+  <SupportUrl DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/"/>
+  <AppDomains>
+    <AppDomain>https://therearenousernamesleft.github.io</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Document"/>
+  </Hosts>
+  <Requirements>
+    <Sets DefaultMinVersion="1.3">
+      <Set Name="WordApi" MinVersion="1.3"/>
+    </Sets>
+  </Requirements>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/taskpane.html"/>
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Document">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="GetStarted.Title"/>
+            <Description resid="GetStarted.Description"/>
+            <LearnMoreUrl resid="GetStarted.LearnMoreUrl"/>
+          </GetStarted>
+          <FunctionFile resid="Commands.Url"/>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="LSK.Group">
+                <Label resid="LSK.GroupLabel"/>
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16"/>
+                  <bt:Image size="32" resid="Icon.32"/>
+                  <bt:Image size="80" resid="Icon.80"/>
+                </Icon>
+                <Control xsi:type="Button" id="LSK.OpenPanel">
+                  <Label resid="LSK.ButtonLabel"/>
+                  <Supertip>
+                    <Title resid="LSK.ButtonLabel"/>
+                    <Description resid="LSK.ButtonTip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16"/>
+                    <bt:Image size="32" resid="Icon.32"/>
+                    <bt:Image size="80" resid="Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>LabelSheetKeeperPane</TaskpaneId>
+                    <SourceLocation resid="Taskpane.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16" DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/assets/icon-16.png"/>
+        <bt:Image id="Icon.32" DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/assets/icon-32.png"/>
+        <bt:Image id="Icon.80" DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/assets/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Commands.Url" DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/commands.html"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/taskpane.html"/>
+        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="GetStarted.Title" DefaultValue="Label Sheet Keeper is ready"/>
+        <bt:String id="LSK.GroupLabel" DefaultValue="Labels"/>
+        <bt:String id="LSK.ButtonLabel" DefaultValue="Label Sheet"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="GetStarted.Description" DefaultValue="Click Label Sheet on the Home tab to make a label sheet or track the one you have open."/>
+        <bt:String id="LSK.ButtonTip" DefaultValue="Open the panel that tracks which labels on this sheet are used."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>
