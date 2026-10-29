@@ -8,8 +8,8 @@ A side panel for Microsoft Word that keeps track of which labels on a sheet are 
 - The record of used spots is saved inside the Word document, so it goes wherever the file goes.
 - The panel notices when Word prints the sheet and marks the filled labels used (with Undo).
 - After any change, the panel saves the document for you (once it has been saved the first time).
-- Label sheets open with the panel already showing.
-- **Fill all open spots** puts one label on every open spot, for a sheet of return address labels.
+- Label sheets open with the panel already showing. **About this panel**, at the bottom of the panel, shows whether that's set up.
+- **Fill every open label** copies one label to every open label, for a sheet of return address labels.
 
 Sizes included:
 
@@ -38,11 +38,11 @@ Panel address: https://therearenousernamesleft.github.io/label-sheet-keeper/task
 
 ## Everyday use
 
-1. Click **Label Sheet**, choose a size, and click **Make a new label sheet**. A new document opens. Save it, for example as `Labels 30 per sheet.docx`.
-2. In that document, click **Label Sheet** again. Click spots on the map that are already peeled off your real sheet.
-3. Type a label in the document. Leave the cursor in it, set **Copies**, and click **Copy to next open**.
+1. Click **Label Sheet**, choose your labels, and click **Make the sheet**. A new document opens with the panel. Save it, for example as `Labels 30 per sheet.docx`.
+2. Click each label on the map that's already peeled off your real sheet.
+3. Type a label in the document. Leave the cursor in it, set **Copies**, and click **Copy** (or **Fill every open label**).
 4. Print with ⌘P. In the print dialog, keep Scale at 100%. If Word warns that margins are outside the printable area, click **Ignore**. The labels have their own blank space inside.
-5. When the labels came out right, click **I printed these**. Save the document.
+5. The panel notices the print and marks those labels used (click **Undo** if they didn't come out right). If it ever misses a print, click **I printed these**.
 
 With a new printer or a new pack of labels, click **Make a test page** in the panel first. Print it on plain paper and hold it behind a label sheet against a light to check that the boxes line up. Word shows the label edges on screen if you turn on **View Gridlines** on the table **Layout** tab; gridlines never print.
 
@@ -50,19 +50,19 @@ With a new printer or a new pack of labels, click **Make a test page** in the pa
 
 The page shows sideways with the two labels standing upright, side by side. In the panel:
 
-- **Use a label file:** choose an Amazon return label PDF or a picture of any label (or drop it on the panel). Drag across the label on the preview to leave out instructions or packing slips, then click **Put on the next open label**. The label is sized to fit and turned upright if needed.
-- **Type an address label:** fill in From and Ship to. Your return address is remembered for next time.
+- **Label file** tab: choose an Amazon return label PDF or a picture of any label (or drop it on the panel). Drag across the label on the preview to leave out instructions or a packing slip, then click **Put on the next open label**. The label is sized to fit and turned upright if needed.
+- **Address** tab: fill in From and Ship to. Your return address is remembered for next time.
 
 Print the test page once and tell the panel whether Label 1 came out on the top or bottom half of your sheet. From then on the panel calls them the top label and bottom label.
 
-Keep one saved document per physical sheet you have in progress. When you load a fresh sheet of labels, click **Start a new sheet**.
+Keep one saved document per physical sheet you have in progress. When you load a fresh sheet of labels, click **Reset for a fresh sheet**.
 
 ## Adding a new label size
 
 1. Open `formats.js` in this repository on GitHub and click the pencil icon to edit.
 2. Copy one of the entries between `{` and `},`, paste it at the end of the list, and change the values. The comment at the top of the file explains each measurement.
 3. Click **Commit changes**. GitHub publishes the change in a minute or two.
-4. In Word, open the panel, click **Make a different size**, and the new size is listed.
+4. In Word, open the panel and click **Make another sheet**. The new size is listed. Print a test page before using it on real labels.
 
 If a measurement doesn't add up (for example labels running off the page), the panel skips that size and says why.
 

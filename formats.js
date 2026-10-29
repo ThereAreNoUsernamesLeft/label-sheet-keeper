@@ -2,7 +2,8 @@
   Label sheet sizes for Label Sheet Keeper.
 
   HOW TO ADD A NEW SIZE
-  1. Copy one of the entries below and paste it at the end of the list.
+  1. Copy one of the entries below and paste it where you want it in the
+     list (the panel shows sizes in this order).
   2. Give it a new, unique id (lowercase letters, numbers and dashes).
   3. Fill in the measurements in inches. You can find them on the label
      package or in the maker's Word template (Layout > Margins, and the
@@ -25,19 +26,22 @@
        topSpace    with align "top": blank space above the first line, so
                    text clears the top edge (default 0.4)
        font        starting font and size for new sheets
-       shipping    true to show the shipping tools in the panel: address
-                   label builder and "put a label file on the sheet"
-  4. Save the file. GitHub publishes it in a minute or two. In Word, open
-     the panel, choose "Make a new label sheet", and the new size is listed.
+       shipping    true to show the shipping tools in the panel: put a
+                   label file (PDF or picture) on the sheet, or build an
+                   address label
+  4. Commit the change. GitHub publishes it in a minute or two. In Word,
+     open the panel and click "Make another sheet": the new size is listed.
+     Print a test page before using it on real labels.
 */
 (function (root) {
   'use strict';
 
+  // Listed in the panel in this order.
   var FORMATS = [
     {
       id: 'avery-5160',
       name: 'Address labels, 30 per sheet',
-      detail: '1″ × 2⅝″ · fits Avery 5160 / 8160',
+      detail: '1″ × 2⅝″ · Avery 5160, 8160',
       page: { width: 8.5, height: 11 },
       across: 3,
       down: 10,
@@ -50,28 +54,9 @@
       corner: 0.0625
     },
     {
-      // The physical sheet is 8½ × 11 with two 8½ × 5½ labels. Shown sideways
-      // so each label stands upright, like a 4 × 6 shipping label.
-      id: 'shipping-2-sideways',
-      name: 'Shipping labels, 2 per sheet',
-      detail: 'Sideways page, two upright 5½″ × 8½″ labels · fits Avery 5126 / 8126 and other 2-per-page shipping labels',
-      page: { width: 11, height: 8.5 },
-      across: 2,
-      down: 1,
-      label: { width: 5.5, height: 8.5 },
-      firstLabel: { left: 0, top: 0 },
-      pitch: { across: 5.5, down: 8.5 },
-      padding: { left: 0.4, right: 0.4 },
-      align: 'top',
-      topSpace: 0.45,
-      font: { name: 'Arial', size: 12 },
-      corner: 0,
-      shipping: true
-    },
-    {
       id: 'avery-5167',
-      name: 'Small return address labels, 80 per sheet',
-      detail: '½″ × 1¾″ · fits Avery 5167 / 8167',
+      name: 'Return address labels, 80 per sheet',
+      detail: '½″ × 1¾″ · Avery 5167, 8167',
       page: { width: 8.5, height: 11 },
       across: 4,
       down: 20,
@@ -86,7 +71,7 @@
     {
       id: 'avery-5163',
       name: 'Shipping labels, 10 per sheet',
-      detail: '2″ × 4″ · fits Avery 5163 / 8163',
+      detail: '2″ × 4″ · Avery 5163, 8163',
       page: { width: 8.5, height: 11 },
       across: 2,
       down: 5,
@@ -101,7 +86,7 @@
     {
       id: 'avery-5164',
       name: 'Shipping labels, 6 per sheet',
-      detail: '3⅓″ × 4″ · fits Avery 5164 / 8164',
+      detail: '3⅓″ × 4″ · Avery 5164, 8164',
       page: { width: 8.5, height: 11 },
       across: 2,
       down: 3,
@@ -114,9 +99,28 @@
       corner: 0.0625
     },
     {
+      // The physical sheet is 8½ × 11 with two 8½ × 5½ labels. Shown sideways
+      // so each label stands upright, like a 4 × 6 shipping label.
+      id: 'shipping-2-sideways',
+      name: 'Shipping labels, 2 per sheet',
+      detail: '5½″ × 8½″, shown sideways · Avery 5126, 8126',
+      page: { width: 11, height: 8.5 },
+      across: 2,
+      down: 1,
+      label: { width: 5.5, height: 8.5 },
+      firstLabel: { left: 0, top: 0 },
+      pitch: { across: 5.5, down: 8.5 },
+      padding: { left: 0.4, right: 0.4 },
+      align: 'top',
+      topSpace: 0.45,
+      font: { name: 'Arial', size: 12 },
+      corner: 0,
+      shipping: true
+    },
+    {
       id: 'full-sheet-1',
-      name: 'Full-sheet label, 1 per sheet',
-      detail: '8½″ × 11″ · fits Avery 5165 / 8165; good for printing a carrier label full size',
+      name: 'Full-sheet labels, 1 per sheet',
+      detail: '8½″ × 11″ · Avery 5165, 8165',
       page: { width: 8.5, height: 11 },
       across: 1,
       down: 1,

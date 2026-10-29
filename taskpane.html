@@ -3,7 +3,6 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="X-UA-Compatible" content="IE=Edge">
 <title>Label Sheet Keeper</title>
 <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -18,86 +17,99 @@
 </head>
 <body>
 <main class="pane">
-  <header class="head">
-    <p id="fmt-name" class="sub"></p>
-  </header>
 
   <section id="v-loading" class="view"><p class="hint">Reading the document…</p></section>
 
   <section id="v-outside" class="view" hidden>
-    <p>This panel runs inside Microsoft Word. Open Word, then click <b>Label Sheet</b> on the Home tab.</p>
+    <p>This panel runs inside Microsoft Word. Open Word and click <b>Label Sheet</b> on the Home tab.</p>
     <p class="hint">Setup steps are on the <a href="./">Label Sheet Keeper page</a>.</p>
   </section>
 
   <section id="v-old" class="view" hidden>
-    <p>This version of Word is too old for the panel. Update Word from Help › Check for Updates, then reopen it.</p>
+    <p>This version of Word is too old for the panel. Update Word (Help › Check for Updates), then reopen it.</p>
   </section>
 
+  <!-- Choosing a size to make a new sheet -->
   <section id="v-none" class="view" hidden>
-    <p class="lead">This document isn’t a label sheet yet. Pick your label size to make one.</p>
-    <div id="fmt-list" class="fmt-list" role="radiogroup" aria-label="Label size"></div>
-    <button type="button" id="create-btn" class="btn primary wide">Make a new label sheet</button>
-    <p class="hint">A new Word document opens, set up for that sheet. In the new window, click <b>Label Sheet</b> on the Home tab.</p>
-    <p class="hint">If nothing opens, download a blank sheet instead: <span id="tpl-links"></span></p>
+    <div id="made" class="done" hidden><p id="made-msg"></p></div>
+    <div>
+      <h1 id="choose-title" class="title">Make a label sheet</h1>
+      <p id="choose-lead" class="hint">Choose the labels you have. The sheet opens as a new Word document laid out to match them.</p>
+    </div>
+    <div id="fmt-list" class="fmt-list" role="radiogroup" aria-labelledby="choose-title"></div>
+    <button type="button" id="create-btn" class="btn primary wide">Make the sheet</button>
+    <details class="more">
+      <summary>Nothing opened?</summary>
+      <p class="hint">Download a blank sheet and open it in Word instead: <span id="tpl-links"></span></p>
+    </details>
     <p id="fmt-problems" class="warn" hidden></p>
     <button type="button" id="back-btn" class="btn link" hidden>Back to this sheet</button>
   </section>
 
+  <!-- A document whose label layout no longer matches -->
   <section id="v-broken" class="view" hidden>
     <p id="broken-msg"></p>
-    <button type="button" id="broken-new" class="btn ghost">Make a new label sheet</button>
+    <button type="button" id="broken-new" class="btn ghost">Make a new sheet</button>
   </section>
 
+  <!-- A label sheet -->
   <section id="v-sheet" class="view" hidden>
-    <div class="map-wrap">
-      <div id="map" class="map" role="group" aria-label="Your label sheet"></div>
-    </div>
+    <header>
+      <h1 id="fmt-name" class="title"></h1>
+      <p id="fmt-detail" class="hint"></p>
+    </header>
+
+    <div class="map-wrap"><div id="map" class="map" role="group" aria-label="Map of your label sheet"></div></div>
     <div id="tally" class="tally"></div>
+
     <div id="confirm" class="confirm" hidden>
       <p id="confirm-msg"></p>
       <div class="row">
-        <button type="button" id="confirm-yes" class="btn danger sm"></button>
+        <button type="button" id="confirm-yes" class="btn primary sm"></button>
         <button type="button" id="confirm-no" class="btn ghost sm">Cancel</button>
       </div>
     </div>
-    <p id="say" class="say" role="status" aria-live="polite"></p>
 
-    <div class="step">
-      <h2><span class="n">1</span>Mark peeled-off labels</h2>
-      <p class="hint">Click a spot on the map to mark it used. Click it again to make it open.</p>
-      <div class="row">
+    <section class="step" aria-labelledby="s1">
+      <h2 id="s1"><span class="n">1</span>Mark used labels</h2>
+      <p class="hint">Click each label on the map that’s already peeled off your sheet. Click again to make it open.</p>
+      <div id="first-row" class="row">
         <label for="first-n">Mark the first</label>
         <input id="first-n" type="number" min="1" value="3" inputmode="numeric">
         <span>used</span>
         <button type="button" id="first-btn" class="btn ghost sm">Mark</button>
       </div>
-    </div>
+    </section>
 
-    <div class="step" id="step-copy">
-      <h2><span class="n">2</span>Fill labels</h2>
-      <p class="hint">Type and format a label in the document. Leave the cursor in it, then copy it to the next open spots.</p>
+    <section id="step-copy" class="step" aria-labelledby="s2a">
+      <h2 id="s2a"><span class="n">2</span>Fill labels</h2>
+      <p class="hint">Type a label in the document and leave the cursor in it. Then copy it to open labels.</p>
       <p id="here" class="here"></p>
       <div class="row">
         <label for="copies">Copies</label>
         <input id="copies" type="number" min="1" value="1" inputmode="numeric">
-        <button type="button" id="copy-btn" class="btn ghost">Copy to next open</button>
+        <button type="button" id="copy-btn" class="btn ghost">Copy</button>
       </div>
-      <button type="button" id="fill-all" class="btn ghost wide">Fill all open spots with this label</button>
-    </div>
+      <button type="button" id="fill-all" class="btn ghost wide">Fill every open label</button>
+    </section>
 
-    <div class="step" id="step-ship" hidden>
-      <h2><span class="n">2</span>Fill a shipping label</h2>
-      <p class="hint" id="ship-target"></p>
+    <section id="step-ship" class="step" aria-labelledby="s2b" hidden>
+      <h2 id="s2b"><span class="n">2</span>Add a shipping label</h2>
+      <p id="ship-target" class="hint"></p>
       <div id="side-row" class="side-row" hidden>
-        <p class="hint" id="side-q">After printing the test page, which half of your sheet did Label 1 come out on?</p>
+        <p id="side-q" class="hint"></p>
         <div class="seg" role="group" aria-labelledby="side-q">
           <button type="button" id="side-top" data-side="top">Top half</button>
           <button type="button" id="side-bottom" data-side="bottom">Bottom half</button>
         </div>
       </div>
 
-      <div class="card">
-        <h3>Use a label file</h3>
+      <div class="seg tabs" role="tablist" aria-label="How to add the label">
+        <button type="button" role="tab" id="tab-file" aria-controls="pane-file">Label file</button>
+        <button type="button" role="tab" id="tab-addr" aria-controls="pane-addr">Address</button>
+      </div>
+
+      <div id="pane-file" class="card" role="tabpanel" aria-labelledby="tab-file">
         <p class="hint">An Amazon return label or any carrier label, as a PDF or a picture. You can also drop the file here.</p>
         <input type="file" id="ship-file" class="sr" accept=".pdf,application/pdf,image/png,image/jpeg,image/gif,image/webp,image/heic">
         <label for="ship-file" id="ship-file-label" class="btn ghost" tabindex="0">Choose a PDF or picture</label>
@@ -111,61 +123,66 @@
             <canvas id="crop-canvas"></canvas>
             <div id="crop-box" class="crop-box" hidden></div>
           </div>
-          <p class="hint">Drag across the label to use just that part of the page.</p>
+          <p class="hint">Drag across the label to leave out instructions or a packing slip.</p>
           <div class="row">
             <button type="button" id="crop-auto" class="btn ghost sm">Trim white edges</button>
             <button type="button" id="crop-all" class="btn ghost sm">Whole page</button>
             <button type="button" id="crop-turn" class="btn ghost sm">Turn 90°</button>
           </div>
           <div class="fit">
-            <div id="fit-label" class="fit-label"><canvas id="fit-canvas"></canvas></div>
+            <div class="fit-label"><canvas id="fit-canvas"></canvas></div>
             <p class="hint">How it will sit on the label.</p>
           </div>
           <button type="button" id="ship-place" class="btn primary wide">Put on the next open label</button>
         </div>
       </div>
 
-      <div class="card">
-        <h3>Type an address label</h3>
+      <div id="pane-addr" class="card" role="tabpanel" aria-labelledby="tab-addr" hidden>
         <label class="fl" for="from-addr">From (your return address)</label>
         <textarea id="from-addr" rows="3" spellcheck="false" placeholder="Your name&#10;Street address&#10;City, State ZIP"></textarea>
         <p class="hint">Remembered for next time.</p>
         <label class="fl" for="to-addr">Ship to</label>
         <textarea id="to-addr" rows="4" spellcheck="false" placeholder="Recipient name&#10;Street address&#10;City, State ZIP"></textarea>
-        <button type="button" id="addr-place" class="btn ghost wide">Put on the next open label</button>
+        <button type="button" id="addr-place" class="btn primary wide">Put on the next open label</button>
       </div>
       <p class="hint">You can also click inside a label in the document and type.</p>
-    </div>
+    </section>
 
-    <div class="step">
-      <h2><span class="n">3</span>Print</h2>
-      <p class="hint">Print with ⌘P. The panel notices when Word prints this sheet and marks the filled labels used. If it ever misses a print, click the button.</p>
-      <label class="check"><input type="checkbox" id="auto-mark" checked> Mark labels used as soon as Word prints</label>
-      <p id="print-watch" class="hint watch"></p>
+    <section class="step" aria-labelledby="s3">
+      <h2 id="s3"><span class="n">3</span>Print</h2>
+      <p class="hint">Print with ⌘P at 100% scale.</p>
+      <label class="check"><input type="checkbox" id="auto-mark" checked> Mark labels used automatically when Word prints</label>
       <button type="button" id="printed-btn" class="btn primary wide">I printed these</button>
-      <p class="hint">New printer or new pack of labels? <button type="button" id="test-btn" class="btn link inline">Make a test page</button>, print it on plain paper, and hold it behind a label sheet against a light to check that the boxes line up.</p>
-      <div id="undo-row" class="row" hidden>
-        <span id="undo-msg" class="hint"></span>
+      <div id="undo-row" class="undo-row" hidden>
+        <span id="undo-msg"></span>
         <button type="button" id="undo-btn" class="btn ghost sm">Undo</button>
       </div>
-    </div>
+      <p id="print-watch" class="hint small"></p>
+      <p class="hint">New printer or new pack of labels? <button type="button" id="test-btn" class="btn link inline">Make a test page</button>, print it on plain paper, and hold it behind a label sheet against a light to check that the boxes line up.</p>
+    </section>
+
+    <p id="save-hint" class="save-hint" hidden>Save this document once (⌘S). After that, the panel saves it for you after every change.</p>
 
     <details class="more">
       <summary>Print history</summary>
       <ul id="hist" class="hist"></ul>
     </details>
 
-    <p id="save-hint" class="hint save-hint" hidden>Save this document once (⌘S). From the next time you open it, the panel saves it for you after every change.</p>
-
     <footer class="foot">
-      <button type="button" id="reset-btn" class="btn link">Start a new sheet</button>
-      <button type="button" id="other-btn" class="btn link">Make a different size</button>
+      <button type="button" id="reset-btn" class="btn link">Reset for a fresh sheet</button>
+      <button type="button" id="other-btn" class="btn link">Make another sheet</button>
       <button type="button" id="refresh-btn" class="btn link">Refresh</button>
     </footer>
+
+    <details class="more about">
+      <summary>About this panel</summary>
+      <dl id="about-list" class="about-list"></dl>
+    </details>
   </section>
 
   <p id="error" class="error" role="alert" hidden></p>
 </main>
+<p id="say" class="say" role="status" aria-live="polite"></p>
 <script>document.write('<script src="taskpane.js?t=' + window.LSK_T + '"><\/script>');</script>
 </body>
 </html>

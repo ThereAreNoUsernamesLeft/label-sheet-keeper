@@ -146,6 +146,34 @@
     '<w:defaultTabStop w:val="720"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat>' +
     '</w:settings>';
 
+  var WE_NS = 'http://schemas.microsoft.com/office/webextensions/webextension/2010/11';
+  var WETP_NS = 'http://schemas.microsoft.com/office/webextensions/taskpanes/2010/11';
+
+  // The add-in reference Word wrote into a document where the panel was open
+  // ({ id, version, store, storeType }). Copying it into a new sheet, with
+  // Office.AutoShowTaskpaneWithDocument set, makes Word open the panel with it.
+  function webExtensionXml(ref) {
+    var g = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16);
+    }).toUpperCase();
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<we:webextension xmlns:we="' + WE_NS + '" id="{' + g + '}">' +
+      '<we:reference id="' + esc(ref.id) + '" version="' + esc(ref.version) + '" store="' + esc(ref.store) + '" storeType="' + esc(ref.storeType) + '"/>' +
+      '<we:alternateReferences/>' +
+      '<we:properties><we:property name="Office.AutoShowTaskpaneWithDocument" value="true"/></we:properties>' +
+      '<we:bindings/><we:snapshot xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>' +
+      '</we:webextension>';
+  }
+  var TASKPANES = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<wetp:taskpanes xmlns:wetp="' + WETP_NS + '">' +
+    '<wetp:taskpane dockstate="right" visibility="1" width="350" row="0">' +
+    '<wetp:webextensionref xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId1"/>' +
+    '</wetp:taskpane></wetp:taskpanes>';
+  var TASKPANES_RELS = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.microsoft.com/office/2011/relationships/webextension" Target="webextension1.xml"/>' +
+    '</Relationships>';
+
   var CONTENT_TYPES = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
     '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
@@ -155,14 +183,17 @@
     '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>' +
     '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
     '<Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/>' +
-    '</Types>';
+    '{{WE}}</Types>';
+  var WE_TYPES = '<Override PartName="/word/webextensions/taskpanes.xml" ContentType="application/vnd.ms-office.webextensiontaskpanes+xml"/>' +
+    '<Override PartName="/word/webextensions/webextension1.xml" ContentType="application/vnd.ms-office.webextension+xml"/>';
 
   var ROOT_RELS = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
     '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
     '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>' +
     '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties" Target="docProps/custom.xml"/>' +
-    '</Relationships>';
+    '{{WE}}</Relationships>';
+  var WE_ROOT_REL = '<Relationship Id="rId4" Type="http://schemas.microsoft.com/office/2011/relationships/webextensiontaskpanes" Target="word/webextensions/taskpanes.xml"/>';
 
   var DOC_RELS = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
@@ -193,8 +224,14 @@
     var Z = JSZipLib || root.JSZip;
     if (!Z) return Promise.reject(new Error('The file builder did not load. Check your internet connection and reopen the panel.'));
     var zip = new Z();
-    zip.file('[Content_Types].xml', CONTENT_TYPES);
-    zip.file('_rels/.rels', ROOT_RELS);
+    var we = opts.addinRef && opts.addinRef.id && !opts.test;
+    zip.file('[Content_Types].xml', CONTENT_TYPES.replace('{{WE}}', we ? WE_TYPES : ''));
+    zip.file('_rels/.rels', ROOT_RELS.replace('{{WE}}', we ? WE_ROOT_REL : ''));
+    if (we) {
+      zip.file('word/webextensions/taskpanes.xml', TASKPANES);
+      zip.file('word/webextensions/_rels/taskpanes.xml.rels', TASKPANES_RELS);
+      zip.file('word/webextensions/webextension1.xml', webExtensionXml(opts.addinRef));
+    }
     if (opts.test) { opts.outline = true; opts.numbers = true; }
     zip.file('docProps/core.xml', coreXml(f, opts));
     zip.file('docProps/custom.xml', customXml(f, opts));
@@ -205,7 +242,7 @@
     return zip.generateAsync({ type: opts.type || 'base64', compression: 'DEFLATE' });
   }
 
-  var api = { PROP: PROP, layout: layout, count: count, cellOf: cellOf, labelAt: labelAt, buildDocx: buildDocx, documentXml: documentXml };
+  var api = { PROP: PROP, WE_NS: WE_NS, layout: layout, count: count, cellOf: cellOf, labelAt: labelAt, buildDocx: buildDocx, documentXml: documentXml };
   root.LSK_SHEET = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
