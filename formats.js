@@ -32,6 +32,11 @@
   4. Commit the change. GitHub publishes it in a minute or two. In Word,
      open the panel and click "Make another sheet": the new size is listed.
      Print a test page before using it on real labels.
+
+  You can also add a size from the panel itself ("Add your own size" when
+  making a sheet). Those sizes are saved on your Mac instead of here.
+  Every sheet also keeps its own measurements inside the document, so it
+  keeps working even if its size is later removed from this list.
 */
 (function (root) {
   'use strict';
@@ -41,7 +46,7 @@
     {
       id: 'avery-5160',
       name: 'Address labels, 30 per sheet',
-      detail: '1″ × 2⅝″ · Avery 5160, 8160',
+      detail: '1″ × 2⅝″ · Avery 5160 (laser), 8160 (inkjet)',
       page: { width: 8.5, height: 11 },
       across: 3,
       down: 10,
@@ -56,7 +61,7 @@
     {
       id: 'avery-5167',
       name: 'Return address labels, 80 per sheet',
-      detail: '½″ × 1¾″ · Avery 5167, 8167',
+      detail: '½″ × 1¾″ · Avery 5167 (laser), 8167 (inkjet)',
       page: { width: 8.5, height: 11 },
       across: 4,
       down: 20,
@@ -71,7 +76,7 @@
     {
       id: 'avery-5163',
       name: 'Shipping labels, 10 per sheet',
-      detail: '2″ × 4″ · Avery 5163, 8163',
+      detail: '2″ × 4″ · Avery 5163 (laser), 8163 (inkjet)',
       page: { width: 8.5, height: 11 },
       across: 2,
       down: 5,
@@ -86,7 +91,7 @@
     {
       id: 'avery-5164',
       name: 'Shipping labels, 6 per sheet',
-      detail: '3⅓″ × 4″ · Avery 5164, 8164',
+      detail: '3⅓″ × 4″ · Avery 5164 (laser), 8164 (inkjet)',
       page: { width: 8.5, height: 11 },
       across: 2,
       down: 3,
@@ -103,7 +108,7 @@
       // so each label stands upright, like a 4 × 6 shipping label.
       id: 'shipping-2-sideways',
       name: 'Shipping labels, 2 per sheet',
-      detail: '5½″ × 8½″, shown sideways · Avery 5126, 8126',
+      detail: '5½″ × 8½″, shown sideways · Avery 5126 (laser), 8126 (inkjet)',
       page: { width: 11, height: 8.5 },
       across: 2,
       down: 1,
@@ -120,7 +125,7 @@
     {
       id: 'full-sheet-1',
       name: 'Full-sheet labels, 1 per sheet',
-      detail: '8½″ × 11″ · Avery 5165, 8165',
+      detail: '8½″ × 11″ · Avery 5165 (laser), 8165 (inkjet)',
       page: { width: 8.5, height: 11 },
       across: 1,
       down: 1,
@@ -177,7 +182,11 @@
     return null;
   }
 
-  var api = { formats: VALID, invalid: INVALID, getFormat: getFormat, problems: problems };
+  // A sheet with a blank strip of at least 0.4″ above the labels can carry the
+  // small feed arrow ("this edge in first") without printing on a label.
+  function hasStrip(f) { return !!f && f.page.height >= f.page.width && f.firstLabel.top >= 0.4; }
+
+  var api = { formats: VALID, invalid: INVALID, getFormat: getFormat, problems: problems, withDefaults: withDefaults, hasStrip: hasStrip };
   root.LSK_FORMATS = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

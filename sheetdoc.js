@@ -1,27 +1,58 @@
 /*
-  Builds a Word document (.docx) for a label sheet size from formats.js.
-  The page margins and a borderless table with exact row heights put every
-  label cell exactly where the physical label sits on the sheet.
-  Also maps label numbers (1, 2, 3... across each row) to table cells.
+  Builds Word documents for a label sheet size from formats.js.
+
+  Page layout of a sheet (from the top of the page):
+    top page margin        fixed per sheet: 0.32″ on sheets with a blank top
+                           strip (room for the small feed arrow in the
+                           header), otherwise 0
+    spacer paragraph       locked, exact height; together with the margin it
+                           puts the first row exactly where the labels start.
+                           Changing its height moves every label up or down
+                           without touching the page margins.
+    label table            borderless, exact row heights; thin spacer rows
+                           and columns where the sheet has gaps
+    last paragraph         Word requires one after a table; kept tiny
+
+  The left page margin is the first label's left edge; a table indent moves
+  labels left or right later. Each sheet stores its size and its margins in
+  document properties, so it keeps working even if its size is later removed
+  from the list.
 */
 (function (root) {
   'use strict';
 
-  var TW = 1440;            // twips per inch
-  // Room kept below the labels for the paragraph Word requires after a table
-  // (0.3 inch). Word on Mac can add a paragraph of its own, so this is generous;
-  // too little room gives the document a blank second page.
-  var TRAIL = 432;
+  var TW = 1440;                 // twips per inch
+  var TRAIL = 432;               // room below the labels for Word's last paragraph (0.3″)
+  var STRIP_MARGIN = 0.32;       // top page margin on sheets with a blank top strip
   var PROP = 'LabelSheetFormat';
+  var LAYOUT_PROP = 'LabelSheetLayout';
+  var SPEC_PROP = 'LabelSheetSpec';
+  var SPACER_TAG = 'lsk-spacer';
+  var ARROW_TEXT = '▲ TOP · FEED THIS EDGE INTO THE PRINTER FIRST · PRINT SIDE UP';
+  var TEST_ARROW_TEXT = '▲ TOP OF PAGE · THIS EDGE WENT INTO THE PRINTER FIRST';
+  var ARROW_BEFORE_PT = 15;      // space above the arrow text; clears the 5 mm edge printers skip
+  var ARROW_SIZE_PT = 6;
 
   function tw(inches) { return Math.round(inches * TW); }
   function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
+  function hasStrip(f) { return !!f && f.page.height >= f.page.width && f.firstLabel.top >= 0.4; }
 
-  // Columns and rows of the Word table, including thin spacer columns/rows
-  // where the sheet has gaps between labels.
-  function layout(f) {
+  // The page margins a new sheet gets (inches). Older sheets used the first
+  // label's position as the margins; pass those in opts.margins instead.
+  function defaultMargins(f, nudge) {
+    var left = f.firstLabel.left + ((nudge && nudge.x) || 0);
+    return { top: hasStrip(f) ? STRIP_MARGIN : 0, left: Math.max(0, left) };
+  }
+
+  // Columns and rows of the label table, plus where it sits on the page.
+  // opts: { nudge: {x, y} inches, margins: {top, left} inches (the sheet's
+  // actual page margins, for rebuilding an existing sheet in place) }
+  function layout(f, opts) {
+    opts = opts || {};
+    var nudge = opts.nudge || { x: 0, y: 0 };
+    var m = opts.margins || defaultMargins(f, nudge);
     var gapX = Math.max(0, f.pitch.across - f.label.width);
     var gapY = Math.max(0, f.pitch.down - f.label.height);
     var hasGapX = f.across > 1 && tw(gapX) > 0;
@@ -36,33 +67,39 @@
       if (hasGapY && i < f.down - 1) rows.push({ label: false, h: tw(gapY) });
     }
     var pageW = tw(f.page.width), pageH = tw(f.page.height);
-    var left = tw(f.firstLabel.left), top = tw(f.firstLabel.top);
+    var wantTop = tw(f.firstLabel.top + (nudge.y || 0));
+    var wantLeft = tw(f.firstLabel.left + (nudge.x || 0));
+    var top = tw(m.top), left = tw(m.left);
+    // The spacer makes up the difference between the margin and where the
+    // labels should start. It can't be negative: labels can't move above the
+    // top margin (on older sheets the margin is where the labels start, and
+    // on some sizes the labels start at the very top of the page).
+    var spacer = Math.max(0, wantTop - top);
+    var clampedUp = wantTop < top;
+    var indent = wantLeft - left;
     var tableW = cols.reduce(function (a, c) { return a + c.w; }, 0);
     var tableH = rows.reduce(function (a, r) { return a + r.h; }, 0);
-    // Word always needs one paragraph after a table. The bottom page margin is
-    // 0 so everything below the labels is free room for it. When labels run to
-    // the bottom edge, trim the last row so that paragraph still fits on page 1
-    // (that strip is in the printer's no-print zone anyway).
-    var over = top + tableH + TRAIL - pageH;
+    // Word needs one paragraph after the table. When labels run to the bottom
+    // edge, trim the last row so that paragraph still fits on page 1 (that
+    // strip is in the printer's no-print zone anyway).
+    var over = top + spacer + tableH + TRAIL - pageH;
     if (over > 0) { rows[rows.length - 1].h -= over; tableH -= over; }
     return {
       cols: cols, rows: rows, hasGapX: hasGapX, hasGapY: hasGapY,
-      pageW: pageW, pageH: pageH, left: left, top: top,
-      right: Math.max(0, pageW - left - tableW),
-      bottom: 0,
-      tableW: tableW
+      pageW: pageW, pageH: pageH, top: top, left: left, spacer: spacer, indent: indent,
+      right: Math.max(0, pageW - left - tableW), bottom: 0, tableW: tableW,
+      clampedUp: clampedUp, margins: m
     };
   }
 
   function count(f) { return f.across * f.down; }
 
-  // Label number (1-based, across each row from the top) -> table row/cell index
+  // Label number (1-based, across each row from the top) <-> table row/cell.
   function cellOf(f, n) {
     var L = layout(f);
     var r = Math.floor((n - 1) / f.across), c = (n - 1) % f.across;
     return { row: L.hasGapY ? r * 2 : r, cell: L.hasGapX ? c * 2 : c };
   }
-  // Table row/cell index -> label number, or 0 for a spacer cell
   function labelAt(f, row, cell) {
     var L = layout(f);
     if (L.hasGapY) { if (row % 2) return 0; row = row / 2; }
@@ -70,24 +107,46 @@
     if (row >= f.down || cell >= f.across) return 0;
     return row * f.across + cell + 1;
   }
+  function tableShape(f) { var L = layout(f); return { rows: L.rows.length, cols: L.cols.length }; }
 
-  function documentXml(f, opts) {
+  // One paragraph of label text. p: { t, size, b, i, align, before, indent, font, color }
+  function paraXml(f, p, first) {
+    var ppr = '';
+    if (first && f.align === 'top' && p.before === undefined) ppr += '<w:pStyle w:val="LabelTop"/>';
+    if (p.before !== undefined) ppr += '<w:spacing w:before="' + Math.round(p.before * 20) + '" w:after="0"/>';
+    if (p.indent) ppr += '<w:ind w:left="' + Math.round(p.indent * 20) + '"/>';
+    if (p.align && p.align !== 'left') ppr += '<w:jc w:val="' + (p.align === 'center' ? 'center' : p.align) + '"/>';
+    var rpr = '';
+    if (p.font) rpr += '<w:rFonts w:ascii="' + esc(p.font) + '" w:hAnsi="' + esc(p.font) + '" w:cs="' + esc(p.font) + '"/>';
+    if (p.b) rpr += '<w:b/>';
+    if (p.i) rpr += '<w:i/>';
+    if (p.color) rpr += '<w:color w:val="' + esc(String(p.color).replace('#', '')) + '"/>';
+    if (p.size) rpr += '<w:sz w:val="' + Math.round(p.size * 2) + '"/><w:szCs w:val="' + Math.round(p.size * 2) + '"/>';
+    return '<w:p>' + (ppr ? '<w:pPr>' + ppr + '</w:pPr>' : '') +
+      (p.t ? '<w:r>' + (rpr ? '<w:rPr>' + rpr + '</w:rPr>' : '') + '<w:t xml:space="preserve">' + esc(p.t) + '</w:t></w:r>' : '') + '</w:p>';
+  }
+
+  function spacerXml(L) {
+    if (!L.spacer) return '';
+    return '<w:sdt><w:sdtPr><w:alias w:val="Label position"/><w:tag w:val="' + SPACER_TAG + '"/><w:lock w:val="sdtContentLocked"/></w:sdtPr><w:sdtContent>' +
+      '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="' + Math.max(1, L.spacer) + '" w:lineRule="exact"/><w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr></w:p>' +
+      '</w:sdtContent></w:sdt>';
+  }
+
+  // The label table. opts: { outline, numbers, prefill: { n: [para] } }
+  function tableXml(f, L, opts) {
     opts = opts || {};
-    var L = layout(f);
     var pad = f.padding;
     var vAlign = f.align === 'top' ? 'top' : f.align === 'bottom' ? 'bottom' : 'center';
     var x = [];
-    x.push('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>');
-    x.push('<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>');
     x.push('<w:tbl><w:tblPr>');
     x.push('<w:tblW w:w="' + L.tableW + '" w:type="dxa"/>');
-    x.push('<w:tblInd w:w="0" w:type="dxa"/>');
+    x.push('<w:tblInd w:w="' + L.indent + '" w:type="dxa"/>');
     var b = opts.outline ? 'w:val="single" w:sz="4" w:space="0" w:color="999999"' : 'w:val="nil"';
     x.push('<w:tblBorders><w:top ' + b + '/><w:left ' + b + '/><w:bottom ' + b + '/><w:right ' + b + '/><w:insideH ' + b + '/><w:insideV ' + b + '/></w:tblBorders>');
     x.push('<w:tblLayout w:type="fixed"/>');
     // Side padding only. Word for Mac can add top/bottom cell padding on top of
-    // an exact row height, which makes rows drift down the page; text is kept
-    // off the top and bottom edges by placing it in the middle of the label.
+    // an exact row height, which makes rows drift down the page.
     x.push('<w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="' + tw(pad.left) + '" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="' + tw(pad.right) + '" w:type="dxa"/></w:tblCellMar>');
     x.push('</w:tblPr><w:tblGrid>');
     L.cols.forEach(function (c) { x.push('<w:gridCol w:w="' + c.w + '"/>'); });
@@ -102,11 +161,12 @@
         x.push('<w:vAlign w:val="' + (isLabel ? vAlign : 'top') + '"/></w:tcPr>');
         if (isLabel) {
           n++;
-          // With align "top", the first line uses the LabelTop style: it starts
-          // topSpace below the label's top edge, and pressing Return goes back
-          // to Normal so later lines aren't spaced out.
+          // On top-aligned sheets the first line uses the LabelTop style, which
+          // starts it topSpace below the label's edge.
           var pStyle = f.align === 'top' ? '<w:pStyle w:val="LabelTop"/>' : '';
+          var pre = opts.prefill && opts.prefill[n];
           if (opts.numbers) x.push('<w:p><w:pPr>' + pStyle + '<w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>Label ' + n + '</w:t></w:r></w:p>');
+          else if (pre && pre.length) pre.forEach(function (p, i) { x.push(paraXml(f, p, i === 0)); });
           else x.push(pStyle ? '<w:p><w:pPr>' + pStyle + '</w:pPr></w:p>' : '<w:p/>');
         } else {
           x.push('<w:p><w:pPr><w:spacing w:line="20" w:lineRule="exact"/><w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr></w:p>');
@@ -116,14 +176,50 @@
       x.push('</w:tr>');
     });
     x.push('</w:tbl>');
+    return x.join('');
+  }
+
+  var NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+
+  function documentXml(f, opts) {
+    opts = opts || {};
+    var L = layout(f, opts);
+    var x = [];
+    x.push('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>');
+    x.push('<w:document ' + NS + '><w:body>');
+    x.push(spacerXml(L));
+    x.push(tableXml(f, L, opts));
     // Required last paragraph: hidden, 1pt, so it never makes a second page.
     x.push('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/><w:rPr><w:vanish/><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr></w:p>');
     var orient = L.pageW > L.pageH ? ' w:orient="landscape"' : '';
-    x.push('<w:sectPr><w:pgSz w:w="' + L.pageW + '" w:h="' + L.pageH + '"' + orient + '/>');
+    x.push('<w:sectPr>');
+    if (opts.header) x.push('<w:headerReference w:type="default" r:id="rId3"/>');
+    x.push('<w:pgSz w:w="' + L.pageW + '" w:h="' + L.pageH + '"' + orient + '/>');
     x.push('<w:pgMar w:top="' + L.top + '" w:right="' + L.right + '" w:bottom="' + L.bottom + '" w:left="' + L.left + '" w:header="0" w:footer="0" w:gutter="0"/>');
     x.push('<w:cols w:space="720"/></w:sectPr>');
     x.push('</w:body></w:document>');
     return x.join('');
+  }
+
+  function headerXml(text) {
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ' + NS + '>' +
+      '<w:p><w:pPr><w:spacing w:before="' + ARROW_BEFORE_PT * 20 + '" w:after="0"/><w:jc w:val="center"/></w:pPr>' +
+      '<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:b/><w:color w:val="555555"/><w:sz w:val="' + ARROW_SIZE_PT * 2 + '"/><w:szCs w:val="' + ARROW_SIZE_PT * 2 + '"/></w:rPr>' +
+      '<w:t xml:space="preserve">' + esc(text) + '</w:t></w:r></w:p></w:hdr>';
+  }
+
+  // A flat package for Word's insertOoxml: the spacer and the label table,
+  // used to rebuild a sheet in place (repair, printer adjustment).
+  function tablePackage(f, opts) {
+    var L = layout(f, opts);
+    var body = spacerXml(L) + tableXml(f, L, opts) + '<w:p/>';
+    return '<pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage">' +
+      '<pkg:part pkg:name="/_rels/.rels" pkg:contentType="application/vnd.openxmlformats-package.relationships+xml"><pkg:xmlData>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' +
+      '</pkg:xmlData></pkg:part>' +
+      '<pkg:part pkg:name="/word/document.xml" pkg:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"><pkg:xmlData>' +
+      '<w:document ' + NS + '><w:body>' + body + '</w:body></w:document>' +
+      '</pkg:xmlData></pkg:part></pkg:package>';
   }
 
   function stylesXml(f) {
@@ -136,6 +232,7 @@
       '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>' +
       '<w:style w:type="paragraph" w:customStyle="1" w:styleId="LabelTop"><w:name w:val="Label first line"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>' +
       '<w:pPr><w:spacing w:before="' + tw(f.topSpace || 0.4) + '"/></w:pPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Header"><w:name w:val="header"/><w:basedOn w:val="Normal"/></w:style>' +
       '<w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:uiPriority w:val="99"/><w:semiHidden/>' +
       '<w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>' +
       '</w:styles>';
@@ -174,32 +271,38 @@
     '<Relationship Id="rId1" Type="http://schemas.microsoft.com/office/2011/relationships/webextension" Target="webextension1.xml"/>' +
     '</Relationships>';
 
-  var CONTENT_TYPES = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
-    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
-    '<Default Extension="xml" ContentType="application/xml"/>' +
-    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
-    '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
-    '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>' +
-    '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
-    '<Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/>' +
-    '{{WE}}</Types>';
-  var WE_TYPES = '<Override PartName="/word/webextensions/taskpanes.xml" ContentType="application/vnd.ms-office.webextensiontaskpanes+xml"/>' +
-    '<Override PartName="/word/webextensions/webextension1.xml" ContentType="application/vnd.ms-office.webextension+xml"/>';
-
-  var ROOT_RELS = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
-    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>' +
-    '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties" Target="docProps/custom.xml"/>' +
-    '{{WE}}</Relationships>';
-  var WE_ROOT_REL = '<Relationship Id="rId4" Type="http://schemas.microsoft.com/office/2011/relationships/webextensiontaskpanes" Target="word/webextensions/taskpanes.xml"/>';
-
-  var DOC_RELS = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
-    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>' +
-    '</Relationships>';
+  function contentTypes(we, header) {
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+      '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+      '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>' +
+      (header ? '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : '') +
+      '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
+      '<Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/>' +
+      (we ? '<Override PartName="/word/webextensions/taskpanes.xml" ContentType="application/vnd.ms-office.webextensiontaskpanes+xml"/>' +
+        '<Override PartName="/word/webextensions/webextension1.xml" ContentType="application/vnd.ms-office.webextension+xml"/>' : '') +
+      '</Types>';
+  }
+  function rootRels(we) {
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>' +
+      '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties" Target="docProps/custom.xml"/>' +
+      (we ? '<Relationship Id="rId4" Type="http://schemas.microsoft.com/office/2011/relationships/webextensiontaskpanes" Target="word/webextensions/taskpanes.xml"/>' : '') +
+      '</Relationships>';
+  }
+  function docRels(header) {
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>' +
+      (header ? '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>' : '') +
+      '</Relationships>';
+  }
 
   function coreXml(f, opts) {
     var title = (opts && opts.test ? 'Alignment test – ' : 'Label sheet – ') + f.name;
@@ -208,41 +311,72 @@
       '<dc:title>' + esc(title) + '</dc:title><dc:creator>Label Sheet Keeper</dc:creator></cp:coreProperties>';
   }
 
-  // A real sheet carries LabelSheetFormat so the panel recognizes it. A test
-  // page gets a different name so the panel doesn't track it as a sheet.
-  function customXml(f, opts) {
-    var name = opts && opts.test ? 'LabelSheetTest' : PROP;
+  // The measurements a sheet needs to work on its own.
+  function specOf(f) {
+    return {
+      id: f.id, name: f.name, detail: f.detail, page: f.page, across: f.across, down: f.down,
+      label: f.label, firstLabel: f.firstLabel, pitch: f.pitch, padding: f.padding, align: f.align,
+      topSpace: f.topSpace, font: f.font, corner: f.corner, shipping: f.shipping
+    };
+  }
+  function chunks(s, n) { var out = []; for (var i = 0; i < s.length; i += n) out.push(s.slice(i, i + n)); return out; }
+
+  // A real sheet carries LabelSheetFormat so the panel recognizes it, plus
+  // its margins and measurements. A test page gets a different name so the
+  // panel doesn't track it as a sheet.
+  function customXml(f, L, opts) {
+    var props = [];
+    if (opts && opts.test) props.push(['LabelSheetTest', f.id]);
+    else {
+      props.push([PROP, f.id]);
+      props.push([LAYOUT_PROP, JSON.stringify({ v: 2, top: L.margins.top, left: L.margins.left })]);
+      chunks(JSON.stringify(specOf(f)), 240).forEach(function (c, i) { props.push([SPEC_PROP + (i + 1), c]); });
+    }
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">' +
-      '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="2" name="' + name + '"><vt:lpwstr>' + esc(f.id) + '</vt:lpwstr></property>' +
+      props.map(function (p, i) {
+        return '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="' + (i + 2) + '" name="' + esc(p[0]) + '"><vt:lpwstr>' + esc(p[1]) + '</vt:lpwstr></property>';
+      }).join('') +
       '</Properties>';
   }
 
-  // Returns a Promise of the .docx as base64 (type 'base64') or a Node buffer (type 'nodebuffer').
+  // Builds the .docx. Returns a Promise of base64 (default) or a Node buffer
+  // (opts.type 'nodebuffer').
+  // opts: { test, nudge, addinRef, feedArrow, prefill, outline, numbers, type }
   function buildDocx(f, JSZipLib, opts) {
     opts = opts || {};
     var Z = JSZipLib || root.JSZip;
-    if (!Z) return Promise.reject(new Error('The file builder did not load. Check your internet connection and reopen the panel.'));
-    var zip = new Z();
+    if (!Z) return Promise.reject(new Error('The file builder didn’t load. Close and reopen the panel.'));
+    if (opts.test) { opts.outline = true; opts.numbers = true; }
+    var L = layout(f, opts);
+    var header = (opts.feedArrow || opts.test) && hasStrip(f) && L.top >= tw(STRIP_MARGIN) ? (opts.test ? TEST_ARROW_TEXT : ARROW_TEXT) : '';
+    var docOpts = {}; Object.keys(opts).forEach(function (k) { docOpts[k] = opts[k]; });
+    docOpts.header = !!header;
     var we = opts.addinRef && opts.addinRef.id && !opts.test;
-    zip.file('[Content_Types].xml', CONTENT_TYPES.replace('{{WE}}', we ? WE_TYPES : ''));
-    zip.file('_rels/.rels', ROOT_RELS.replace('{{WE}}', we ? WE_ROOT_REL : ''));
+    var zip = new Z();
+    zip.file('[Content_Types].xml', contentTypes(we, !!header));
+    zip.file('_rels/.rels', rootRels(we));
     if (we) {
       zip.file('word/webextensions/taskpanes.xml', TASKPANES);
       zip.file('word/webextensions/_rels/taskpanes.xml.rels', TASKPANES_RELS);
       zip.file('word/webextensions/webextension1.xml', webExtensionXml(opts.addinRef));
     }
-    if (opts.test) { opts.outline = true; opts.numbers = true; }
     zip.file('docProps/core.xml', coreXml(f, opts));
-    zip.file('docProps/custom.xml', customXml(f, opts));
-    zip.file('word/document.xml', documentXml(f, opts));
-    zip.file('word/_rels/document.xml.rels', DOC_RELS);
+    zip.file('docProps/custom.xml', customXml(f, L, opts));
+    zip.file('word/document.xml', documentXml(f, docOpts));
+    zip.file('word/_rels/document.xml.rels', docRels(!!header));
     zip.file('word/styles.xml', stylesXml(f));
     zip.file('word/settings.xml', SETTINGS);
+    if (header) zip.file('word/header1.xml', headerXml(header));
     return zip.generateAsync({ type: opts.type || 'base64', compression: 'DEFLATE' });
   }
 
-  var api = { PROP: PROP, WE_NS: WE_NS, layout: layout, count: count, cellOf: cellOf, labelAt: labelAt, buildDocx: buildDocx, documentXml: documentXml };
+  var api = {
+    PROP: PROP, LAYOUT_PROP: LAYOUT_PROP, SPEC_PROP: SPEC_PROP, SPACER_TAG: SPACER_TAG, WE_NS: WE_NS,
+    ARROW_TEXT: ARROW_TEXT, ARROW_BEFORE_PT: ARROW_BEFORE_PT, ARROW_SIZE_PT: ARROW_SIZE_PT, STRIP_MARGIN: STRIP_MARGIN,
+    hasStrip: hasStrip, layout: layout, count: count, cellOf: cellOf, labelAt: labelAt, tableShape: tableShape,
+    buildDocx: buildDocx, documentXml: documentXml, tablePackage: tablePackage, paraXml: paraXml, specOf: specOf
+  };
   root.LSK_SHEET = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

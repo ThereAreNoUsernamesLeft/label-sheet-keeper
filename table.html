@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Label table – Label Sheet Keeper</title>
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<script>
+  window.LSK_T = Date.now();
+  document.write('<link rel="stylesheet" href="table.css?t=' + LSK_T + '">' +
+    ['vendor/jszip/jszip.min.js', 'lsk-tools.js'].map(function (f) { return '<script src="' + f + '?t=' + LSK_T + '"><\/script>'; }).join(''));
+</script>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div>
+      <h1>Label table</h1>
+      <p id="info" class="hint">One row per label. Type addresses, paste cells from Excel or Numbers, or open a file.</p>
+    </div>
+    <div class="tools">
+      <input type="file" id="file" class="sr" accept=".csv,.txt,.xlsx,.vcf,text/csv,text/vcard">
+      <label for="file" class="btn ghost" tabindex="0" id="file-label">Open a file…</label>
+      <select id="book" aria-label="Add a saved address"></select>
+      <button type="button" id="more" class="btn ghost">Add 10 rows</button>
+      <button type="button" id="clear" class="btn ghost">Clear</button>
+    </div>
+  </header>
+  <div class="grid-wrap">
+    <table id="grid" class="grid" aria-label="Addresses">
+      <colgroup><col class="c-n"><col class="c-name"><col class="c-co"><col class="c-st"><col class="c-apt"><col class="c-city"><col class="c-state"><col class="c-zip"><col class="c-x"></colgroup>
+      <thead><tr><th>#</th><th>Name</th><th>Company</th><th>Street</th><th>Apt / Suite</th><th>City</th><th>State</th><th>ZIP</th><th><span class="sr">Delete</span></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <footer class="bottom">
+    <p id="count" class="hint"></p>
+    <p id="msg" class="msg" role="status" aria-live="polite"></p>
+    <div class="acts">
+      <button type="button" id="cancel" class="btn ghost">Close</button>
+      <button type="button" id="fill" class="btn primary">Fill labels</button>
+    </div>
+  </footer>
+</div>
+<script>document.write('<script src="table.js?t=' + window.LSK_T + '"><\/script>');</script>
+</body>
+</html>
