@@ -73,7 +73,7 @@ With a new printer or a new pack of labels, click **Make a test page** and print
 
 ### Repair
 
-If the label layout gets damaged (a row deleted, text typed above the labels), the panel says so. **Repair this sheet** rebuilds the layout and keeps used labels and labels ready to print.
+If the label layout gets damaged (a row deleted, text typed above the labels, a table pasted inside a label), the panel says so. **Repair this sheet** rebuilds the layout and keeps used labels and labels ready to print.
 
 ## Adding a new label size in formats.js
 

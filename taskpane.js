@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.3';
+  var VERSION = '1.3.1';
   var ADDIN_ID = '8d491c85-a76d-4d26-a6f5-b7b2dd4a1711';   // must match manifest.xml <Id>
   var F = window.LSK_FORMATS;
   var S = window.LSK_SHEET;
@@ -411,7 +411,7 @@
       return ctx.sync();
     });
   }
-  // Sheets made before version 1.4 have no header or footer parts. With top
+  // Sheets made before version 1.3.1 have no header or footer parts. With top
   // or bottom margins of 0, Word makes room for an empty one anyway, which
   // pushes full-height labels (shipping, full sheet) onto a second page. Once
   // per panel load, shrink an empty header or footer to a 1-point line.
