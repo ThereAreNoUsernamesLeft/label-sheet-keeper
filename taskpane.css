@@ -96,3 +96,19 @@ input[type=number]{width:56px;font:inherit;padding:5px 6px;border:1px solid var(
 .head:has(.sub:empty){display:none}
 .sub{font-size:12.5px}
 .btn.link.inline{font-size:inherit;color:var(--accent)}
+
+/* Shipping tools */
+textarea{display:block;width:100%;font:13px/1.4 var(--f);padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);resize:vertical}
+.fl{display:block;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:2px 0 -4px}
+.card{display:grid;gap:8px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.card h3{margin:0;font-size:13px;font-weight:700}
+.card.drop{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.crop{display:grid;gap:8px}
+.page-nav{justify-content:center}
+.crop-wrap{position:relative;overflow:hidden;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none;line-height:0;border:1px solid var(--line);background:#fff}
+.crop-wrap canvas{width:100%;height:auto;display:block}
+.crop-box{position:absolute;border:2px solid var(--accent);box-shadow:0 0 0 9999px rgba(0,0,0,.35);pointer-events:none}
+.fit{display:flex;gap:10px;align-items:center}
+.fit-label{flex:none;width:72px;background:#fff;box-shadow:inset 0 0 0 1px var(--die);border-radius:2px;line-height:0}
+.fit-label canvas{width:100%;height:auto;display:block}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}

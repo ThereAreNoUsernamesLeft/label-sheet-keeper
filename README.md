@@ -12,7 +12,7 @@ Sizes included:
 | Size | Labels | Fits |
 | --- | --- | --- |
 | 1″ × 2⅝″ | 30 per sheet | Avery 5160 / 8160 |
-| 8½″ × 5½″ | 2 per sheet | Avery 5126 / 8126 and other 2-per-page shipping labels |
+| 5½″ × 8½″, sideways page | 2 per sheet | Avery 5126 / 8126 and other 2-per-page shipping labels |
 
 Panel address: https://therearenousernamesleft.github.io/label-sheet-keeper/taskpane.html
 
@@ -35,6 +35,15 @@ Panel address: https://therearenousernamesleft.github.io/label-sheet-keeper/task
 5. When the labels came out right, click **I printed these**. Save the document.
 
 With a new printer or a new pack of labels, click **Make a test page** in the panel first. Print it on plain paper and hold it behind a label sheet against a light to check that the boxes line up. Word shows the label edges on screen if you turn on **View Gridlines** on the table **Layout** tab; gridlines never print.
+
+### Shipping labels (2 per sheet)
+
+The page shows sideways with the two labels standing upright, side by side. In the panel:
+
+- **Use a label file:** choose an Amazon return label PDF or a picture of any label (or drop it on the panel). Drag across the label on the preview to leave out instructions or packing slips, then click **Put on the next open label**. The label is sized to fit and turned upright if needed.
+- **Type an address label:** fill in From and Ship to. Your return address is remembered for next time.
+
+Print the test page once to see which half of your physical sheet is label 1, so you know which spot to mark when you peel one off.
 
 Keep one saved document per physical sheet you have in progress. When you load a fresh sheet of labels, click **Start a new sheet**.
 
@@ -62,4 +71,5 @@ You only need to touch `manifest.xml` on your Mac again if the add-in's name or 
 | `formats.js` | The list of label sizes |
 | `sheetdoc.js` | Builds a Word document laid out for a label size |
 | `templates/` | Ready-made blank sheets for each size, in case Word can't open a new document from the panel |
+| `vendor/pdfjs/` | Mozilla PDF.js 3.11.174 (Apache 2.0 license), used to read label PDFs |
 | `index.html` | This project's web page with the setup steps |

@@ -7,7 +7,9 @@
   3. Fill in the measurements in inches. You can find them on the label
      package or in the maker's Word template (Layout > Margins, and the
      table's column widths and row heights):
-       page        the whole sheet
+       page        the whole sheet as you want to see it in Word. Use
+                   { width: 11, height: 8.5 } for a sideways page; the
+                   physical sheet still feeds into the printer the same way.
        across/down how many labels in each row / in each column
        label       one label's width and height
        firstLabel  from the sheet's left edge and top edge to the first
@@ -18,9 +20,13 @@
                    the label size.
        padding     blank space kept inside the left and right sides of each
                    label so text stays clear of the edges
-       align       where text sits from top to bottom: "center" (best, keeps
-                   text clear of the top and bottom edges), "top" or "bottom"
+       align       where text sits from top to bottom: "center" (keeps text
+                   clear of the top and bottom edges), "top" or "bottom"
+       topSpace    with align "top": blank space above the first line, so
+                   text clears the top edge (default 0.4)
        font        starting font and size for new sheets
+       shipping    true to show the shipping tools in the panel: address
+                   label builder and "put a label file on the sheet"
   4. Save the file. GitHub publishes it in a minute or two. In Word, open
      the panel, choose "Make a new label sheet", and the new size is listed.
 */
@@ -44,19 +50,23 @@
       corner: 0.0625
     },
     {
-      id: 'half-sheet-2',
+      // The physical sheet is 8½ × 11 with two 8½ × 5½ labels. Shown sideways
+      // so each label stands upright, like a 4 × 6 shipping label.
+      id: 'shipping-2-sideways',
       name: 'Shipping labels, 2 per sheet',
-      detail: '8½″ × 5½″ · fits Avery 5126 / 8126 and other 2-per-page shipping labels',
-      page: { width: 8.5, height: 11 },
-      across: 1,
-      down: 2,
-      label: { width: 8.5, height: 5.5 },
+      detail: 'Sideways page, two upright 5½″ × 8½″ labels · fits Avery 5126 / 8126 and other 2-per-page shipping labels',
+      page: { width: 11, height: 8.5 },
+      across: 2,
+      down: 1,
+      label: { width: 5.5, height: 8.5 },
       firstLabel: { left: 0, top: 0 },
-      pitch: { across: 8.5, down: 5.5 },
+      pitch: { across: 5.5, down: 8.5 },
       padding: { left: 0.4, right: 0.4 },
-      align: 'center',
-      font: { name: 'Arial', size: 14 },
-      corner: 0
+      align: 'top',
+      topSpace: 0.45,
+      font: { name: 'Arial', size: 12 },
+      corner: 0,
+      shipping: true
     }
   ];
 
@@ -80,6 +90,8 @@
     if (typeof f.padding.left !== 'number') f.padding.left = 0.1;
     if (typeof f.padding.right !== 'number') f.padding.right = 0.1;
     f.align = f.align === 'top' || f.align === 'bottom' ? f.align : 'center';
+    f.topSpace = typeof f.topSpace === 'number' ? f.topSpace : 0.4;
+    f.shipping = !!f.shipping;
     f.font = f.font || { name: 'Arial', size: 10 };
     f.corner = f.corner || 0;
     f.detail = f.detail || '';

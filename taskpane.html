@@ -73,7 +73,7 @@
       </div>
     </div>
 
-    <div class="step">
+    <div class="step" id="step-copy">
       <h2><span class="n">2</span>Fill labels</h2>
       <p class="hint">Type and format a label in the document. Leave the cursor in it, then copy it to the next open spots.</p>
       <p id="here" class="here"></p>
@@ -82,6 +82,51 @@
         <input id="copies" type="number" min="1" value="1" inputmode="numeric">
         <button type="button" id="copy-btn" class="btn ghost">Copy to next open</button>
       </div>
+    </div>
+
+    <div class="step" id="step-ship" hidden>
+      <h2><span class="n">2</span>Fill a shipping label</h2>
+      <p class="hint" id="ship-target"></p>
+
+      <div class="card">
+        <h3>Use a label file</h3>
+        <p class="hint">An Amazon return label or any carrier label, as a PDF or a picture. You can also drop the file here.</p>
+        <input type="file" id="ship-file" class="sr" accept=".pdf,application/pdf,image/png,image/jpeg,image/gif,image/webp,image/heic">
+        <label for="ship-file" id="ship-file-label" class="btn ghost" tabindex="0">Choose a PDF or picture</label>
+        <div id="crop" class="crop" hidden>
+          <div id="page-nav" class="row page-nav" hidden>
+            <button type="button" id="pg-prev" class="btn ghost sm" aria-label="Previous page">‹</button>
+            <span id="pg-label"></span>
+            <button type="button" id="pg-next" class="btn ghost sm" aria-label="Next page">›</button>
+          </div>
+          <div id="crop-wrap" class="crop-wrap">
+            <canvas id="crop-canvas"></canvas>
+            <div id="crop-box" class="crop-box" hidden></div>
+          </div>
+          <p class="hint">Drag across the label to use just that part of the page.</p>
+          <div class="row">
+            <button type="button" id="crop-auto" class="btn ghost sm">Trim white edges</button>
+            <button type="button" id="crop-all" class="btn ghost sm">Whole page</button>
+            <button type="button" id="crop-turn" class="btn ghost sm">Turn 90°</button>
+          </div>
+          <div class="fit">
+            <div id="fit-label" class="fit-label"><canvas id="fit-canvas"></canvas></div>
+            <p class="hint">How it will sit on the label.</p>
+          </div>
+          <button type="button" id="ship-place" class="btn primary wide">Put on the next open label</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Type an address label</h3>
+        <label class="fl" for="from-addr">From (your return address)</label>
+        <textarea id="from-addr" rows="3" spellcheck="false" placeholder="Your name&#10;Street address&#10;City, State ZIP"></textarea>
+        <p class="hint">Remembered for next time.</p>
+        <label class="fl" for="to-addr">Ship to</label>
+        <textarea id="to-addr" rows="4" spellcheck="false" placeholder="Recipient name&#10;Street address&#10;City, State ZIP"></textarea>
+        <button type="button" id="addr-place" class="btn ghost wide">Put on the next open label</button>
+      </div>
+      <p class="hint">You can also click inside a label in the document and type.</p>
     </div>
 
     <div class="step">

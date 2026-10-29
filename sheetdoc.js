@@ -102,8 +102,12 @@
         x.push('<w:vAlign w:val="' + (isLabel ? vAlign : 'top') + '"/></w:tcPr>');
         if (isLabel) {
           n++;
-          if (opts.numbers) x.push('<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>Label ' + n + '</w:t></w:r></w:p>');
-          else x.push('<w:p/>');
+          // With align "top", the first line uses the LabelTop style: it starts
+          // topSpace below the label's top edge, and pressing Return goes back
+          // to Normal so later lines aren't spaced out.
+          var pStyle = f.align === 'top' ? '<w:pStyle w:val="LabelTop"/>' : '';
+          if (opts.numbers) x.push('<w:p><w:pPr>' + pStyle + '<w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>Label ' + n + '</w:t></w:r></w:p>');
+          else x.push(pStyle ? '<w:p><w:pPr>' + pStyle + '</w:pPr></w:p>' : '<w:p/>');
         } else {
           x.push('<w:p><w:pPr><w:spacing w:line="20" w:lineRule="exact"/><w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr></w:p>');
         }
@@ -114,7 +118,8 @@
     x.push('</w:tbl>');
     // Required last paragraph: hidden, 1pt, so it never makes a second page.
     x.push('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/><w:rPr><w:vanish/><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr></w:p>');
-    x.push('<w:sectPr><w:pgSz w:w="' + L.pageW + '" w:h="' + L.pageH + '"/>');
+    var orient = L.pageW > L.pageH ? ' w:orient="landscape"' : '';
+    x.push('<w:sectPr><w:pgSz w:w="' + L.pageW + '" w:h="' + L.pageH + '"' + orient + '/>');
     x.push('<w:pgMar w:top="' + L.top + '" w:right="' + L.right + '" w:bottom="' + L.bottom + '" w:left="' + L.left + '" w:header="0" w:footer="0" w:gutter="0"/>');
     x.push('<w:cols w:space="720"/></w:sectPr>');
     x.push('</w:body></w:document>');
@@ -129,6 +134,8 @@
       '<w:sz w:val="' + sz + '"/><w:szCs w:val="' + sz + '"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault>' +
       '<w:pPrDefault><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>' +
       '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>' +
+      '<w:style w:type="paragraph" w:customStyle="1" w:styleId="LabelTop"><w:name w:val="Label first line"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>' +
+      '<w:pPr><w:spacing w:before="' + tw(f.topSpace || 0.4) + '"/></w:pPr></w:style>' +
       '<w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:uiPriority w:val="99"/><w:semiHidden/>' +
       '<w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>' +
       '</w:styles>';

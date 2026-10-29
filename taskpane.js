@@ -300,6 +300,9 @@
     renderTally();
     renderHere();
     renderHistory();
+    $('step-copy').hidden = st.fmt.shipping;
+    $('step-ship').hidden = !st.fmt.shipping;
+    if (st.fmt.shipping) { renderShip(); if (ship.src) drawFit(); }
     var filled = keys(st.filled).length;
     $('printed-btn').textContent = filled ? 'I printed these (' + filled + ')' : 'I printed these';
     $('printed-btn').disabled = !filled;
@@ -492,16 +495,332 @@
 
     $('confirm-yes').addEventListener('click', function () { var a = pendingConfirm; closeAsk(); if (a) a(); });
     $('confirm-no').addEventListener('click', closeAsk);
+    wireShip();
+  }
+
+  // ---------- shipping labels ----------
+  var FROM_KEY = 'lsk.fromAddress';
+  var DPI = 300;
+  var ship = { doc: null, page: 1, pages: 1, src: null, crop: null, turn: 0 };
+
+  function nextOpen() { var o = openList(); return o.length ? o[0] : 0; }
+
+  // Usable area inside one label, in inches: inside the side padding, below
+  // the top space, and clear of the printer's no-print strip at the bottom.
+  function contentBox(f) {
+    var L = S.layout(f), minRow = Infinity;
+    L.rows.forEach(function (r) { if (r.label) minRow = Math.min(minRow, r.h / 1440); });
+    var top = f.align === 'top' ? f.topSpace : 0.3;
+    return { w: f.label.width - f.padding.left - f.padding.right, h: Math.max(0.5, minRow - top - 0.3), top: top, rowH: minRow };
+  }
+
+  var pdfLibPromise = null;
+  function loadPdfLib() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if (pdfLibPromise) return pdfLibPromise;
+    pdfLibPromise = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = 'vendor/pdfjs/pdf.js';
+      s.onload = function () {
+        if (!window.pdfjsLib) { pdfLibPromise = null; reject(userError('The PDF reader didn’t load. Check your internet connection and try again.')); return; }
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdfjs/pdf.worker.js';
+        resolve(window.pdfjsLib);
+      };
+      s.onerror = function () { pdfLibPromise = null; reject(userError('The PDF reader didn’t load. Check your internet connection and try again.')); };
+      document.head.appendChild(s);
+    });
+    return pdfLibPromise;
+  }
+
+  function fileError(e) {
+    say((e && e.userMessage) || 'That file couldn’t be opened. Try a PDF, PNG or JPEG.', 'warn');
+    if (window.console && e && !e.userMessage) console.error(e);
+  }
+
+  function handleFile(file) {
+    if (!file) return;
+    say('Opening ' + file.name + '…');
+    var isPdf = /pdf$/i.test(file.type || '') || /\.pdf$/i.test(file.name || '');
+    var reader = new FileReader();
+    reader.onerror = function () { fileError(); };
+    if (isPdf) {
+      reader.onload = function () {
+        loadPdfLib().then(function (lib) {
+          return lib.getDocument({ data: new Uint8Array(reader.result), standardFontDataUrl: 'vendor/pdfjs/standard_fonts/', isEvalSupported: false }).promise;
+        }).then(function (doc) {
+          ship.doc = doc; ship.pages = doc.numPages; ship.page = 1;
+          return renderPdfPage();
+        }).then(afterSource).catch(fileError);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var c = document.createElement('canvas');
+          c.width = img.naturalWidth; c.height = img.naturalHeight;
+          var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0);
+          ship.doc = null; ship.pages = 1; ship.page = 1; ship.src = c;
+          afterSource();
+        };
+        img.onerror = function () { fileError(userError('That picture couldn’t be opened. Try a PDF, PNG or JPEG.')); };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  function renderPdfPage() {
+    return ship.doc.getPage(ship.page).then(function (page) {
+      var one = page.getViewport({ scale: 1 });
+      var scale = DPI / 72, maxPx = 14e6;
+      if (one.width * one.height * scale * scale > maxPx) scale = Math.sqrt(maxPx / (one.width * one.height));
+      var vp = page.getViewport({ scale: scale });
+      var c = document.createElement('canvas');
+      c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+      var ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      return page.render({ canvasContext: ctx, viewport: vp }).promise.then(function () { ship.src = c; });
+    });
+  }
+
+  function afterSource() {
+    ship.turn = 0;
+    ship.crop = trimBox(ship.src);
+    $('crop').hidden = false;
+    drawCrop();
+    say(ship.pages > 1 ? 'This PDF has ' + ship.pages + ' pages. Use the arrows to pick the page with the label.' : 'Drag across the label if the page has extra instructions on it.');
+  }
+
+  // Box around everything that isn't white, with a small margin.
+  function trimBox(src) {
+    var w = Math.min(500, src.width), k = src.width / w, h = Math.max(1, Math.round(src.height / k));
+    var c = document.createElement('canvas'); c.width = w; c.height = h;
+    var x = c.getContext('2d'); x.drawImage(src, 0, 0, w, h);
+    var d = x.getImageData(0, 0, w, h).data, minX = w, minY = h, maxX = -1, maxY = -1;
+    for (var y = 0; y < h; y++) {
+      for (var i = 0; i < w; i++) {
+        var o = (y * w + i) * 4;
+        if (d[o] + d[o + 1] + d[o + 2] < 690) { if (i < minX) minX = i; if (i > maxX) maxX = i; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+      }
+    }
+    if (maxX < 0) return { x: 0, y: 0, w: src.width, h: src.height };
+    var m = 4;
+    minX = Math.max(0, minX - m); minY = Math.max(0, minY - m); maxX = Math.min(w - 1, maxX + m); maxY = Math.min(h - 1, maxY + m);
+    var bx = Math.floor(minX * k), by = Math.floor(minY * k);
+    return { x: bx, y: by, w: Math.min(src.width - bx, Math.ceil((maxX - minX + 1) * k)), h: Math.min(src.height - by, Math.ceil((maxY - minY + 1) * k)) };
+  }
+
+  function placeBox(cr) {
+    var box = $('crop-box');
+    box.hidden = false;
+    box.style.left = (cr.x / ship.src.width * 100) + '%';
+    box.style.top = (cr.y / ship.src.height * 100) + '%';
+    box.style.width = (cr.w / ship.src.width * 100) + '%';
+    box.style.height = (cr.h / ship.src.height * 100) + '%';
+  }
+
+  function drawCrop() {
+    if (!ship.src) return;
+    var cv = $('crop-canvas'), dpr = window.devicePixelRatio || 1;
+    var dispW = $('crop-wrap').clientWidth || 280;
+    cv.width = Math.round(dispW * dpr);
+    cv.height = Math.round(dispW * ship.src.height / ship.src.width * dpr);
+    var x = cv.getContext('2d');
+    x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height);
+    x.drawImage(ship.src, 0, 0, cv.width, cv.height);
+    placeBox(ship.crop);
+    $('page-nav').hidden = ship.pages < 2;
+    $('pg-label').textContent = 'Page ' + ship.page + ' of ' + ship.pages;
+    $('pg-prev').disabled = ship.page <= 1;
+    $('pg-next').disabled = ship.page >= ship.pages;
+    drawFit();
+  }
+
+  // The cropped label, turned to fit the label shape best, at up to ~2400 px.
+  function output() {
+    var cr = ship.crop, box = contentBox(st.fmt);
+    var straight = Math.min(box.w / cr.w, box.h / cr.h), turned = Math.min(box.w / cr.h, box.h / cr.w);
+    var rot = ((turned > straight * 1.05 ? 90 : 0) + ship.turn) % 360;
+    var k = Math.min(1, 2400 / Math.max(cr.w, cr.h));
+    var w = Math.round(cr.w * k), h = Math.round(cr.h * k), swap = rot % 180 !== 0;
+    var c = document.createElement('canvas');
+    c.width = swap ? h : w; c.height = swap ? w : h;
+    var x = c.getContext('2d');
+    x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+    x.translate(c.width / 2, c.height / 2);
+    x.rotate(rot * Math.PI / 180);
+    x.drawImage(ship.src, cr.x, cr.y, cr.w, cr.h, -w / 2, -h / 2, w, h);
+    var fit = Math.min(box.w / c.width, box.h / c.height);
+    return { canvas: c, wIn: c.width * fit, hIn: c.height * fit, box: box };
+  }
+
+  function drawFit() {
+    if (!ship.src || !st.fmt) return;
+    var out = output(), f = st.fmt, box = out.box;
+    var cv = $('fit-canvas'), pxPerIn = 40;
+    cv.width = Math.round(f.label.width * pxPerIn); cv.height = Math.round(box.rowH * pxPerIn);
+    var x = cv.getContext('2d');
+    x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height);
+    var left = (f.padding.left + (box.w - out.wIn) / 2) * pxPerIn;
+    var top = (f.align === 'top' ? box.top : (box.rowH - out.hIn) / 2) * pxPerIn;
+    x.drawImage(out.canvas, left, top, out.wIn * pxPerIn, out.hIn * pxPerIn);
+  }
+
+  function placeImage(n, b64, wPt, hPt) {
+    var f = st.fmt;
+    return Word.run(function (ctx) {
+      var ci = S.cellOf(f, n);
+      var body = ctx.document.body.tables.getFirst().getCell(ci.row, ci.cell).body;
+      body.clear();
+      var pic = body.insertInlinePictureFromBase64(b64, 'Start');
+      pic.width = wPt;
+      pic.height = hPt;
+      var p = body.paragraphs.getFirst();
+      p.alignment = 'Centered';
+      p.spaceBefore = f.align === 'top' ? f.topSpace * 72 : 0;
+      p.spaceAfter = 0;
+      return ctx.sync();
+    });
+  }
+
+  function placeAddress(n, fromText, toText) {
+    var f = st.fmt, topPt = f.align === 'top' ? f.topSpace * 72 : 0;
+    var lines = [];
+    var fromLines = fromText ? fromText.split(/\r?\n/) : [];
+    var toLines = toText.split(/\r?\n/);
+    if (fromLines.length) {
+      lines.push({ t: 'FROM', size: 8, bold: true, before: topPt });
+      fromLines.forEach(function (l) { lines.push({ t: l, size: 11 }); });
+    }
+    lines.push({ t: 'SHIP TO', size: 9, bold: true, before: fromLines.length ? 90 : topPt + 90, indent: 36 });
+    toLines.forEach(function (l, i) { lines.push({ t: l, size: 16, bold: i === 0, indent: 36 }); });
+    return Word.run(function (ctx) {
+      var ci = S.cellOf(f, n);
+      var body = ctx.document.body.tables.getFirst().getCell(ci.row, ci.cell).body;
+      body.clear();
+      var first = body.paragraphs.getFirst();
+      lines.forEach(function (ln, i) {
+        var p;
+        if (i === 0) { p = first; p.insertText(ln.t, 'Replace'); }
+        else p = body.insertParagraph(ln.t, 'End');
+        p.alignment = 'Left';
+        p.spaceBefore = ln.before || 0;
+        p.spaceAfter = 0;
+        p.leftIndent = ln.indent || 0;
+        p.firstLineIndent = 0;
+        p.font.set({ name: f.font.name, size: ln.size, bold: !!ln.bold, italic: false, color: '#000000' });
+      });
+      return ctx.sync();
+    });
+  }
+
+  function loadFrom() {
+    var v = '';
+    try { v = localStorage.getItem(FROM_KEY) || ''; } catch (e) {}
+    if (!v) { try { v = Office.context.document.settings.get(FROM_KEY) || ''; } catch (e) {} }
+    return v;
+  }
+  function saveFrom(v) {
+    try { localStorage.setItem(FROM_KEY, v); } catch (e) {}
+    try { Office.context.document.settings.set(FROM_KEY, v); Office.context.document.settings.saveAsync(function () {}); } catch (e) {}
+  }
+
+  function renderShip() {
+    var n = nextOpen();
+    var side = st.fmt.across === 2 && st.fmt.down === 1 ? (n === 1 ? ' (left)' : ' (right)') : '';
+    $('ship-target').textContent = n
+      ? 'Next open: label ' + n + side + '. Print the test page once to see which half of your sheet that is.'
+      : 'There are no open labels on this sheet. When you load a fresh sheet, click Start a new sheet.';
+    $('ship-place').disabled = !n;
+    $('addr-place').disabled = !n;
+  }
+
+  function wireShip() {
+    var input = $('ship-file');
+    input.addEventListener('change', function () { handleFile(input.files && input.files[0]); input.value = ''; });
+    $('ship-file-label').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
+    var card = $('step-ship');
+    card.addEventListener('dragover', function (e) { e.preventDefault(); card.classList.add('drop'); });
+    card.addEventListener('dragleave', function () { card.classList.remove('drop'); });
+    card.addEventListener('drop', function (e) {
+      e.preventDefault(); card.classList.remove('drop');
+      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) handleFile(f);
+    });
+
+    $('pg-prev').addEventListener('click', function () { if (ship.doc && ship.page > 1) { ship.page--; renderPdfPage().then(afterSource).catch(fileError); } });
+    $('pg-next').addEventListener('click', function () { if (ship.doc && ship.page < ship.pages) { ship.page++; renderPdfPage().then(afterSource).catch(fileError); } });
+    $('crop-auto').addEventListener('click', function () { if (ship.src) { ship.crop = trimBox(ship.src); drawCrop(); } });
+    $('crop-all').addEventListener('click', function () { if (ship.src) { ship.crop = { x: 0, y: 0, w: ship.src.width, h: ship.src.height }; drawCrop(); } });
+    $('crop-turn').addEventListener('click', function () { ship.turn = (ship.turn + 90) % 360; drawFit(); });
+
+    // Drag a rectangle on the page preview to choose the label area.
+    var wrap = $('crop-wrap'), drag = null;
+    function frac(e) {
+      var r = wrap.getBoundingClientRect();
+      return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) };
+    }
+    function rectFrom(a, b) {
+      return { x: Math.min(a.x, b.x) * ship.src.width, y: Math.min(a.y, b.y) * ship.src.height, w: Math.abs(a.x - b.x) * ship.src.width, h: Math.abs(a.y - b.y) * ship.src.height };
+    }
+    wrap.addEventListener('pointerdown', function (e) {
+      if (!ship.src) return;
+      drag = { a: frac(e), b: frac(e) };
+      try { wrap.setPointerCapture(e.pointerId); } catch (err) {}
+      e.preventDefault();
+    });
+    wrap.addEventListener('pointermove', function (e) { if (!drag) return; drag.b = frac(e); placeBox(rectFrom(drag.a, drag.b)); });
+    function endDrag(e) {
+      if (!drag) return;
+      drag.b = frac(e);
+      var r = rectFrom(drag.a, drag.b);
+      drag = null;
+      if (r.w > ship.src.width * 0.03 && r.h > ship.src.height * 0.03) ship.crop = { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) };
+      drawCrop();
+    }
+    wrap.addEventListener('pointerup', endDrag);
+    wrap.addEventListener('pointercancel', function () { drag = null; drawCrop(); });
+
+    $('ship-place').addEventListener('click', function () {
+      if (!ship.src) { say('Choose a PDF or picture first.', 'warn'); return; }
+      var n = nextOpen();
+      if (!n) { say('There are no open labels on this sheet.', 'warn'); return; }
+      var out = output();
+      var b64 = out.canvas.toDataURL('image/png').split(',')[1];
+      queue(function () { return placeImage(n, b64, out.wIn * 72, out.hIn * 72); }).then(refresh).then(function () {
+        say('Placed on label ' + n + '. Print with ⌘P, then click I printed these.');
+      });
+    });
+
+    var from = $('from-addr');
+    from.value = loadFrom();
+    from.addEventListener('input', function () { saveFrom(from.value); });
+    $('addr-place').addEventListener('click', function () {
+      var to = $('to-addr').value.replace(/\s+$/, '');
+      if (!to.trim()) { say('Type the ship-to address first.', 'warn'); $('to-addr').focus(); return; }
+      var n = nextOpen();
+      if (!n) { say('There are no open labels on this sheet.', 'warn'); return; }
+      var fromText = from.value.replace(/\s+$/, '');
+      saveFrom(fromText);
+      queue(function () { return placeAddress(n, fromText, to); }).then(refresh).then(function () {
+        $('to-addr').value = '';
+        say('Address label placed on label ' + n + '. You can edit it in the document.');
+      });
+    });
   }
 
   // ---------- start ----------
   function demo() {
     // Preview outside Word (?demo): shows the panel with sample data.
-    var f = F.formats[0];
-    st = { kind: 'sheet', fmt: f, used: {}, filled: {}, texts: {}, here: 8 };
-    for (var n = 1; n <= 7; n++) st.used[n] = true;
-    [8, 9, 10].forEach(function (n) { st.filled[n] = true; st.texts[n] = 'Sample Name\n123 Main St\nBoston, MA 02101'; });
+    var shipDemo = /demo=ship/.test(location.search);
+    var f = shipDemo ? F.formats.filter(function (x) { return x.shipping; })[0] : F.formats[0];
+    st = { kind: 'sheet', fmt: f, used: {}, filled: {}, texts: {}, here: shipDemo ? 1 : 8 };
+    if (!shipDemo) {
+      for (var n = 1; n <= 7; n++) st.used[n] = true;
+      [8, 9, 10].forEach(function (n) { st.filled[n] = true; st.texts[n] = 'Sample Name\n123 Main St\nBoston, MA 02101'; });
+    }
     window.Office = window.Office || {};
+    window.LSK_TEST = { ship: ship, output: output, handleFile: handleFile };
     render();
   }
 
