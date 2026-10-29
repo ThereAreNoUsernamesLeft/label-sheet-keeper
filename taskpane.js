@@ -6,7 +6,10 @@
   var S = window.LSK_SHEET;
   var USED_TAG = 'lsk-used';
   var HISTORY_KEY = 'lskHistory';
-  var $ = function (id) { return document.getElementById(id); };
+  // A missing element (for example, Word still showing an older copy of the
+  // panel page for a few minutes after an update) gets a stand-in so the
+  // panel keeps working instead of stopping.
+  var $ = function (id) { return document.getElementById(id) || document.createElement('div'); };
 
   var st = { kind: 'loading', fmt: null, used: {}, filled: {}, texts: {}, here: 0 };
   var undo = null;           // { nums: [], cells: [{n, ooxml}], at }
