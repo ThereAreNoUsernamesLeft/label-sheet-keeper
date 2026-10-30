@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.3.1';
+  var VERSION = '1.3.2';
   var ADDIN_ID = '8d491c85-a76d-4d26-a6f5-b7b2dd4a1711';   // must match manifest.xml <Id>
   var F = window.LSK_FORMATS;
   var S = window.LSK_SHEET;
@@ -741,7 +741,7 @@
     var per = f.across * f.down, out = [];
     for (var i = 0; i < labels.length; i += per) {
       var pre = {};
-      labels.slice(i, i + per).forEach(function (paras, j) { pre[j + 1] = paras; });
+      labels.slice(i, i + per).forEach(function (paras, j) { if (paras) pre[j + 1] = paras; });
       out.push(pre);
     }
     return out;
@@ -1128,15 +1128,18 @@
   // ---------- fit text ----------
   function fitLabels(nums) {
     var f = st.fmt, box = textBox(f), tooLong = [], fitted = [];
+    var minPt = Math.max(5, Math.min(7, f.font.size * 0.7));   // smallest text Fit text will use
     return Word.run(function (ctx) {
       var lists = nums.map(function (n) { var p = cellBody(ctx, n).paragraphs; p.load(PARA_PROPS); return p; });
       return ctx.sync().then(function () {
         nums.forEach(function (n, i) {
           var specs = paraSpecs(lists[i].items, f);
           var s = T.fitScale(specs, box, measure);
-          if (s === null) { tooLong.push(n); return; }
-          if (s >= 0.999) return;
-          lists[i].items.forEach(function (p, j) { p.font.size = Math.max(5, Math.floor(specs[j].size * s * 2) / 2); });
+          if (s !== null && s >= 0.999) return;
+          // Don't shrink the main text below a readable size; ask for shorter text instead.
+          var main = Math.max.apply(null, specs.map(function (p) { return p.size; }));
+          if (s === null || main * s < minPt - 0.01) { tooLong.push(n); return; }
+          lists[i].items.forEach(function (p, j) { p.font.size = Math.max(Math.min(specs[j].size, minPt), Math.floor(specs[j].size * s * 2) / 2); });
           fitted.push(n);
         });
         return ctx.sync();
@@ -1149,7 +1152,7 @@
   function openTableWindow() {
     if (!Office.context.ui || !Office.context.ui.displayDialogAsync) { say('This version of Word can’t open the table window. Update Word and try again.', 'warn'); return; }
     if (tableDlg) { say('The table window is already open.'); return; }
-    storeJson(LS.tableInfo, { open: openList().length, name: st.fmt.name, per: total() });
+    storeJson(LS.tableInfo, { open: openList().length, labels: openList(), name: st.fmt.name, per: total() });
     var url = new URL('table.html', location.href.split('?')[0]).href + '?t=' + Date.now();
     Office.context.ui.displayDialogAsync(url, { height: 70, width: 60, displayInIframe: false }, function (res) {
       if (res.status !== Office.AsyncResultStatus.Succeeded) { say('The table window couldn’t open' + (res.error && res.error.message ? ': ' + res.error.message : '') + '.', 'warn'); return; }
@@ -1165,34 +1168,42 @@
   }
   function closeTable() { try { if (tableDlg) tableDlg.close(); } catch (e) { /* already closed */ } tableDlg = null; }
 
-  // rows: [[name, company, street, apt, city, state, zip], ...]
+  // rows: [[name, company, street, apt, city, state, zip], ...], one per label
+  // in order: row 1 goes on the first open label, and so on. An empty row
+  // leaves its label open. Rows past the open labels go on new sheets.
   function fillFromRows(rows) {
-    var f = st.fmt;
-    var labels = rows.map(function (r) {
+    var f = st.fmt, per = total();
+    var lines = (rows || []).map(function (r) {
+      r = r || [];
       return T.addressLines({ name: r[0], company: r[1], street: r[2], apt: r[3], city: r[4], state: r[5], zip: r[6] });
-    }).filter(function (l) { return l.length; });
-    if (!labels.length) { say('The table is empty. Add at least one address.', 'warn'); return; }
+    });
+    while (lines.length && !lines[lines.length - 1].length) lines.pop();
+    var count = lines.filter(function (l) { return l.length; }).length;
+    if (!count) { say('The table is empty. Add at least one address.', 'warn'); return; }
     var design = currentDesign() === 'bold' ? 'bold' : 'plain';
-    var parasFor = function (lines) { return designParas(lines, design, f).paras; };
+    var parasFor = function (l) { return designParas(l, design, f).paras; };
     var open = openList();
-    var here = labels.slice(0, open.length), rest = labels.slice(open.length);
+    var items = [];
+    lines.slice(0, open.length).forEach(function (l, i) { if (l.length) items.push({ n: open[i], paras: parasFor(l) }); });
+    var nums = items.map(function (it) { return it.n; });
+    var rest = lines.slice(open.length), restCount = rest.filter(function (l) { return l.length; }).length;
     var fillHere = function () {
-      if (!here.length) return Promise.resolve();
-      return queueChange(function () {
-        return writeEach(here.map(function (lines, i) { return { n: open[i], paras: parasFor(lines) }; }));
-      }).then(refresh);
+      if (!items.length) return Promise.resolve();
+      return queueChange(function () { return writeEach(items); }).then(refresh);
     };
     if (!rest.length) {
-      fillHere().then(function () { say('Filled ' + labelList(open.slice(0, here.length)) + ' from the table.'); });
+      fillHere().then(function () { say('Filled ' + labelList(nums) + ' from the table.'); });
       return;
     }
-    var sheetsNeeded = Math.ceil(rest.length / total());
-    ask('You have ' + plural(labels.length, 'address', 'es') + ' but ' + plural(open.length, 'open label') + '. Fill the open labels here and put the other ' + rest.length + ' on ' + plural(sheetsNeeded, 'new sheet') + '?',
-      'Fill and make ' + plural(sheetsNeeded, 'sheet'), function () {
+    var sheets = Math.ceil(rest.length / per), windows = sheets === 1 ? 'It opens in its own window.' : 'Each opens in its own window.';
+    ask((open.length ? 'This sheet has ' + plural(open.length, 'open label') + '. Fill them and put the other ' + plural(restCount, 'address', 'es') + ' on '
+      : 'This sheet has no open labels. Put the ' + plural(restCount, 'address', 'es') + ' on ') + plural(sheets, 'new sheet') + '? ' + windows,
+      'Fill and make ' + plural(sheets, 'sheet'), function () {
         fillHere().then(function () {
-          return queue(function () { return createSheets(f, spillPrefills(f, rest.map(parasFor))); });
+          return queue(function () { return createSheets(f, spillPrefills(f, rest.map(function (l) { return l.length ? parasFor(l) : null; }))); });
         }).then(function () {
-          say('Filled ' + (here.length ? labelList(open.slice(0, here.length)) + ' here and ' : '') + 'made ' + plural(sheetsNeeded, 'new sheet') + ' for the other ' + rest.length + '.');
+          say('Filled ' + (nums.length ? labelList(nums) + ' here and ' : '') + 'made ' + plural(sheets, 'new sheet') + ' for the other ' + plural(restCount, 'address', 'es') + '. ' +
+            (sheets === 1 ? 'It opened in its own window.' : 'They opened in their own windows.'));
         });
       });
   }
@@ -1773,7 +1784,7 @@
       return refresh().then(function () {
         var parts = [];
         if (r.fitted.length) parts.push('Shrank the text on ' + labelList(r.fitted) + ' to fit.');
-        if (r.tooLong.length) parts.push(cap(labelList(r.tooLong)) + (r.tooLong.length === 1 ? ' has' : ' have') + ' too much text to fit even at 5 pt. Shorten it.');
+        if (r.tooLong.length) parts.push(cap(labelList(r.tooLong)) + (r.tooLong.length === 1 ? ' has' : ' have') + ' too much text to fit at a readable size. Shorten ' + (r.tooLong.length === 1 ? 'it' : 'them') + ' or remove a line.');
         if (!parts.length) parts.push('The text already fits.');
         say(parts.join(' '), r.tooLong.length ? 'warn' : '');
       });

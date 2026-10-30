@@ -1,7 +1,9 @@
 /*
   Label Sheet Keeper — the table window.
-  One row per label. Rows are sent to the panel with "Fill labels"; the panel
-  fills open labels in order and puts any extras on new sheets.
+  One row per label, in order: row 1 goes on the first open label, and so on.
+  The first column shows the label each row goes on; a "New sheet" divider
+  marks where rows run past the open labels and onto new sheets. An empty
+  row leaves its label open.
 */
 (function () {
   'use strict';
@@ -18,8 +20,10 @@
   function msg(text, warn) { $('msg').textContent = text || ''; $('msg').className = 'msg' + (warn ? ' warn' : ''); }
 
   // ---------- rows ----------
+  function dataRows() { return Array.prototype.filter.call(rowsEl.children, function (tr) { return tr.classList.contains('row'); }); }
   function addRow(values) {
     var tr = document.createElement('tr');
+    tr.className = 'row';
     var num = document.createElement('td');
     tr.appendChild(num);
     COLS.forEach(function (c, i) {
@@ -30,44 +34,56 @@
     });
     var xd = document.createElement('td'), x = document.createElement('button');
     x.type = 'button'; x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label', 'Delete row');
-    x.addEventListener('click', function () { tr.remove(); if (!rowsEl.children.length) addRows(1); update(); });
+    x.addEventListener('click', function () { tr.remove(); if (!dataRows().length) addRows(1); update(); });
     xd.appendChild(x); tr.appendChild(xd);
     rowsEl.appendChild(tr);
     return tr;
   }
   function addRows(n) { for (var i = 0; i < n; i++) addRow(); }
+  function rowValues(tr) { return Array.prototype.map.call(tr.querySelectorAll('input'), function (i) { return i.value.trim(); }); }
+  // All rows in order, without the empty ones at the end.
   function readRows() {
-    return Array.prototype.map.call(rowsEl.children, function (tr) {
-      return Array.prototype.map.call(tr.querySelectorAll('input'), function (i) { return i.value.trim(); });
-    });
+    var rows = dataRows().map(rowValues);
+    while (rows.length && !rows[rows.length - 1].some(Boolean)) rows.pop();
+    return rows;
   }
   function filledRows() { return readRows().filter(function (r) { return r.some(Boolean); }); }
   function setRows(rows) {
+    var info = json(INFO) || {};
     rowsEl.innerHTML = '';
     rows.forEach(function (r) { addRow(r); });
-    var spare = Math.max(5, 15 - rows.length);
-    addRows(spare);
+    // Start with one row per open label (or 10 for a full sheet), plus a few spare.
+    var want = rows.length ? Math.max(rows.length + 3, info.open || 0) : (info.open || 10);
+    addRows(want - rows.length);
     update();
   }
-  // Put new rows after the last filled row.
-  function appendRows(rows) {
-    var current = filledRows();
-    setRows(current.concat(rows));
-  }
+  // Put new rows after the last row with something in it.
+  function appendRows(rows) { setRows(readRows().concat(rows)); }
 
   function update() {
-    var info = json(INFO) || {}, filled = 0, i = 0;
-    Array.prototype.forEach.call(rowsEl.children, function (tr) {
-      var has = Array.prototype.some.call(tr.querySelectorAll('input'), function (inp) { return inp.value.trim(); });
-      if (has) filled++;
-      tr.firstChild.textContent = String(++i);
-      tr.classList.toggle('over', has && info.open !== undefined && filled > info.open);
+    var info = json(INFO) || {}, open = info.open, per = info.per || 30, labels = info.labels || [];
+    var known = typeof open === 'number';
+    Array.prototype.slice.call(rowsEl.querySelectorAll('tr.divider')).forEach(function (d) { d.remove(); });
+    var filled = 0, last = -1;
+    dataRows().forEach(function (tr, i) {
+      if (rowValues(tr).some(Boolean)) { filled++; last = i; }
+      var extra = known ? i - open : -1;
+      tr.firstChild.textContent = !known ? String(i + 1) : extra < 0 ? String(labels[i] || i + 1) : String(extra % per + 1);
+      tr.classList.toggle('spill', extra >= 0);
+      if (extra >= 0 && extra % per === 0) {
+        var d = document.createElement('tr'), td = document.createElement('td');
+        d.className = 'divider';
+        td.colSpan = COLS.length + 2;
+        td.textContent = 'New sheet ' + (extra / per + 1) + ' · rows below go on a new sheet that opens in its own window';
+        d.appendChild(td);
+        rowsEl.insertBefore(d, tr);
+      }
     });
-    var extra = info.open !== undefined ? Math.max(0, filled - info.open) : 0;
-    $('count').textContent = plural(filled, 'address', 'es') + (info.open !== undefined ? ' · ' + plural(info.open, 'open label') + ' on your sheet' : '') +
-      (extra ? ' · ' + extra + ' more will go on ' + plural(Math.ceil(extra / (info.per || 30)), 'new sheet') : '');
+    var extraSlots = known ? Math.max(0, last + 1 - open) : 0;
+    $('count').textContent = plural(filled, 'address', 'es') + (known ? ' · ' + plural(open, 'open label') + ' on your sheet' : '') +
+      (extraSlots ? ' · ' + (extraSlots === 1 ? '1 row goes' : extraSlots + ' rows go') + ' on ' + plural(Math.ceil(extraSlots / per), 'new sheet') : '');
     $('fill').disabled = !filled;
-    store(DRAFT, JSON.stringify(filledRows()));
+    store(DRAFT, JSON.stringify(readRows()));
   }
 
   // ---------- turning other data into rows ----------
@@ -95,13 +111,13 @@
     var grid = T.parseDelimited(text.replace(/\r?\n$/, ''), text.indexOf('\t') >= 0 ? '\t' : ',');
     if (T.headerMap(grid[0])) { appendRows(rowsFromGrid(grid)); msg('Pasted ' + plural(grid.length - 1, 'row') + ' and matched the columns by their headings.'); return; }
     var tr = target.closest('tr'), startCol = Array.prototype.indexOf.call(tr.querySelectorAll('input'), target);
-    var rowIndex = Array.prototype.indexOf.call(rowsEl.children, tr);
+    var rows = dataRows(), rowIndex = rows.indexOf(tr);
     grid.forEach(function (cells, r) {
-      var row = rowsEl.children[rowIndex + r] || addRow();
+      var row = rows[rowIndex + r] || addRow();
       var inputs = row.querySelectorAll('input');
       cells.forEach(function (v, c) { if (inputs[startCol + c]) inputs[startCol + c].value = String(v).trim(); });
     });
-    if (rowsEl.children.length - rowIndex - grid.length < 3) addRows(5);
+    if (dataRows().length - rowIndex - grid.length < 3) addRows(5);
     update();
     msg('Pasted ' + plural(grid.length, 'row') + '.');
   });
@@ -111,7 +127,7 @@
     if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
     e.preventDefault();
     var tr = e.target.closest('tr'), col = Array.prototype.indexOf.call(tr.querySelectorAll('input'), e.target);
-    var next = tr.nextElementSibling || addRow();
+    var rows = dataRows(), next = rows[rows.indexOf(tr) + 1] || addRow();
     next.querySelectorAll('input')[col].focus();
     update();
   });
@@ -172,8 +188,8 @@
     else msg('This window works with the Label Sheet Keeper panel in Word.', true);
   }
   $('fill').addEventListener('click', function () {
-    var rows = filledRows();
-    if (!rows.length) { msg('Add at least one address first.', true); return; }
+    var rows = readRows();
+    if (!filledRows().length) { msg('Add at least one address first.', true); return; }
     store(DRAFT, '[]');
     send({ type: 'fill', rows: rows });
   });
@@ -182,7 +198,7 @@
   // ---------- start ----------
   function start() {
     var info = json(INFO) || {};
-    $('info').textContent = (info.name ? info.name + '. ' : '') + 'One row per label. Type addresses, paste cells from Excel or Numbers, or open a file.';
+    $('info').textContent = (info.name ? info.name + '. ' : '') + 'One row per label; the first column shows which label. Type addresses, paste cells from Excel or Numbers, or open a file.';
     var draft = json(DRAFT);
     setRows(Array.isArray(draft) ? draft : []);
     fillBookPicker();
@@ -190,5 +206,5 @@
   }
   if (window.Office && Office.onReady) Office.onReady(function () { start(); });
   else start();
-  window.LSK_TABLE = { readRows: filledRows, setRows: setRows };
+  window.LSK_TABLE = { readRows: filledRows, rows: readRows, setRows: setRows };
 })();

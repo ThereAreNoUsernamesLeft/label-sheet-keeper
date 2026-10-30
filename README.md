@@ -37,9 +37,9 @@ Panel address: https://therearenousernamesleft.github.io/label-sheet-keeper/task
 1. Click **Label Sheet**, choose your labels, and click **Make the sheet**. A new document opens with the panel. Save it, for example as `Labels 30 per sheet.docx`.
 2. **Mark used labels:** click each label on the map that's already peeled off your sheet.
 3. **Fill labels:**
-   - **Copy:** type a label in the document, leave the cursor in it, and click **Copy** or **Fill every open label**. **Fit text** shrinks text that's too big; labels whose text may be cut off get a red outline on the map.
+   - **Copy:** type a label in the document, leave the cursor in it, and click **Copy** or **Fill every open label**. **Fit text** shrinks text that's too big (never below a readable size); labels whose text may be cut off get a red outline on the map.
    - **Address:** type an address or pick a saved one, choose a design (Plain, Bold name, Return to, With logo), and put it on the next open label or every open label.
-   - **Table:** opens a bigger window like a small spreadsheet. Type addresses, paste cells from Excel or Numbers, or open an Excel, CSV or contacts file. **Fill labels** fills the open labels in order and puts extras on new sheets.
+   - **Table:** opens a bigger window like a small spreadsheet, with one row for each open label. The first column shows which label a row goes on. Type addresses, paste cells from Excel or Numbers, or open an Excel, CSV or contacts file. Rows past your open labels are marked "New sheet"; **Fill labels** puts them on new sheets, each in its own window.
 4. **Print** with ⌘P at 100% scale. Feed the sheet top edge first, print side up, and choose **Labels** as the paper type. The panel notices the print and marks those labels used.
 
 When you load a fresh sheet of labels, click **Reset for a fresh sheet**.
