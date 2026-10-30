@@ -2698,8 +2698,9 @@
 
   // ---------- little (i) explanations ----------
   // Pointing at an (i) shows its explanation in a small box; it goes away when
-  // the pointer leaves. Keyboard focus and a click (or tap) show it too.
-  var tipFor = null;
+  // the pointer leaves. Keyboard focus shows it too. A click (or tap) keeps it
+  // open until the next click anywhere, or Escape.
+  var tipFor = null, tipPinned = false;
   function showTip(btn) {
     var box = $('tipbox'), text = btn.getAttribute('data-tip');
     if (!text) return;
@@ -2719,21 +2720,22 @@
   }
   function hideTip() {
     if (tipFor) tipFor.removeAttribute('aria-describedby');
-    tipFor = null;
+    tipFor = null; tipPinned = false;
     $('tipbox').hidden = true;
   }
   function infoFrom(node) { return node && node.closest ? node.closest('.info') : null; }
   function wireTips() {
-    document.addEventListener('mouseover', function (e) { var b = infoFrom(e.target); if (b && b !== tipFor) showTip(b); });
-    document.addEventListener('mouseout', function (e) { var b = infoFrom(e.target); if (b && b === tipFor && !b.contains(e.relatedTarget)) hideTip(); });
+    document.addEventListener('mouseover', function (e) { var b = infoFrom(e.target); if (b && b !== tipFor) { tipPinned = false; showTip(b); } });
+    document.addEventListener('mouseout', function (e) { var b = infoFrom(e.target); if (b && b === tipFor && !tipPinned && !b.contains(e.relatedTarget)) hideTip(); });
     document.addEventListener('focusin', function (e) { var b = infoFrom(e.target); if (b) showTip(b); });
-    document.addEventListener('focusout', function (e) { if (infoFrom(e.target) === tipFor) hideTip(); });
-    // A click shows it (for touch); it must not open a section or focus a field.
+    document.addEventListener('focusout', function (e) { if (infoFrom(e.target) === tipFor && !tipPinned) hideTip(); });
+    // A click must not open a section or focus a field.
     document.addEventListener('click', function (e) {
       var b = infoFrom(e.target);
       if (!b) { if (tipFor) hideTip(); return; }
       e.preventDefault(); e.stopPropagation();
       showTip(b);
+      tipPinned = true;
     }, true);
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && tipFor) hideTip(); });
     window.addEventListener('scroll', function () { if (tipFor) hideTip(); }, true);
