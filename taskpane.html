@@ -35,7 +35,7 @@
     <p id="backup-made" class="hint"></p>
     <ul id="backup-sum" class="plain-list"></ul>
     <button type="button" id="backup-restore" class="btn primary wide" hidden>Restore these settings</button>
-    <p class="hint">Restoring replaces the Label Sheet Keeper settings on this Mac with the ones in this backup. Your label sheets aren’t changed.</p>
+    <p class="hint">This replaces the panel’s settings on this Mac. Your label sheets aren’t changed.</p>
     <p id="backup-done" class="done-note" hidden>Done. You can close this document.</p>
   </section>
 
@@ -58,14 +58,13 @@
     </div>
     <div>
       <h1 id="choose-title" class="title">Make a label sheet</h1>
-      <p id="choose-lead" class="hint">Choose the labels you have. The sheet opens as a new Word document laid out to match them.</p>
+      <p id="choose-lead" class="hint">Choose your labels. The sheet opens as a new Word document.</p>
     </div>
     <div id="fmt-list" class="fmt-list" role="radiogroup" aria-labelledby="choose-title"></div>
     <button type="button" id="create-btn" class="btn primary wide">Make the sheet</button>
     <details id="add-size" class="more">
-      <summary>Add your own size</summary>
+      <summary>Add your own size <button type="button" class="info" aria-label="About adding a size" data-tip="Measure your sheet in inches, or copy the numbers from the label maker’s Word template. Print a test page before saving.">i</button></summary>
       <div class="size-form">
-        <p class="hint">Measure your sheet, or copy the numbers from the label maker’s Word template. All sizes are in inches.</p>
         <label class="fl" for="sz-name">Name</label>
         <input id="sz-name" type="text" placeholder="Square labels, 20 per sheet">
         <label class="fl" for="sz-detail">Product numbers (optional)</label>
@@ -81,7 +80,7 @@
           <div><label class="fl" for="sz-gapy">Gap between rows</label><input id="sz-gapy" type="number" step="0.0625" min="0" value="0"></div>
         </div>
         <label class="check"><input type="checkbox" id="sz-sideways"> Show the page sideways</label>
-        <label class="check"><input type="checkbox" id="sz-ship"> Shipping labels (show the label file and address tools)</label>
+        <label class="check"><input type="checkbox" id="sz-ship"> Shipping labels</label>
         <div class="size-preview"><span id="sz-thumb"></span><p id="sz-msg" class="hint"></p></div>
         <div class="row">
           <button type="button" id="sz-test" class="btn ghost sm">Make a test page</button>
@@ -91,7 +90,11 @@
     </details>
     <details class="more">
       <summary>Nothing opened?</summary>
-      <p class="hint">Download a blank sheet and open it in Word instead: <span id="tpl-links"></span></p>
+      <p class="hint">Download a blank sheet and open it in Word: <span id="tpl-links"></span></p>
+    </details>
+    <details id="backup-none" class="more">
+      <summary>Back up or restore settings <button type="button" class="info" aria-label="About backups" data-tip="Saves your address book, return address, label sizes, printer adjustments, label stock and logo in a Word document. Restore it on this Mac or another one.">i</button></summary>
+      <div id="backup-none-slot"></div>
     </details>
     <p id="fmt-problems" class="warn" hidden></p>
     <button type="button" id="back-btn" class="btn link" hidden>Back to this sheet</button>
@@ -102,7 +105,7 @@
     <h1 class="title">This sheet needs attention</h1>
     <p id="broken-msg"></p>
     <button type="button" id="repair-btn" class="btn primary wide">Repair this sheet</button>
-    <p id="repair-note" class="hint">Repair rebuilds the label layout. It keeps your used labels and the labels you’ve filled in.</p>
+    <p id="repair-note" class="hint">Used labels and filled-in labels are kept.</p>
     <button type="button" id="broken-new" class="btn ghost">Make a new sheet</button>
   </section>
 
@@ -117,8 +120,7 @@
     <div id="tally" class="tally"></div>
 
     <section class="step" aria-labelledby="s1">
-      <h2 id="s1"><span class="n">1</span>Mark used labels</h2>
-      <p class="hint">Click each label on the map that’s already peeled off your sheet. Click again to make it open.</p>
+      <h2 id="s1"><span class="n">1</span>Mark used labels <button type="button" class="info" aria-label="About marking used labels" data-tip="Click each label on the map that’s already peeled off your sheet. Click it again to make it open.">i</button></h2>
       <div id="first-row" class="row">
         <label for="first-n">Mark the first</label>
         <input id="first-n" type="number" min="1" value="3" inputmode="numeric">
@@ -142,24 +144,27 @@
 
       <!-- Copy: type in the document, copy to open labels -->
       <div id="pane-copy" class="card" role="tabpanel" hidden>
-        <p class="hint">Type a label in the document and leave the cursor in it. Then copy it to open labels.</p>
-        <p id="here" class="here"></p>
+        <div class="lead-row"><p id="here" class="here"></p><button type="button" class="info" aria-label="About Copy" data-tip="Type a label in the document and leave the cursor in it. Copy puts it on the next open labels. Fit text shrinks text that’s too big, but never below a readable size.">i</button></div>
         <div class="row">
           <label for="copies">Copies</label>
           <input id="copies" type="number" min="1" value="1" inputmode="numeric">
           <button type="button" id="copy-btn" class="btn ghost">Copy</button>
+        </div>
+        <div class="row pair">
+          <button type="button" id="fill-all" class="btn ghost">Fill every open label</button>
           <button type="button" id="fit-btn" class="btn ghost">Fit text</button>
         </div>
-        <button type="button" id="fill-all" class="btn ghost wide">Fill every open label</button>
       </div>
 
       <!-- Label file: PDF or picture (shipping sheets) -->
       <div id="pane-file" class="card" role="tabpanel" hidden>
-        <p class="hint">An Amazon return label or any carrier label, as a PDF or a picture. You can also drop files here, or copy a label image and press ⌘V. Choose several files at once to line them up.</p>
-        <input type="file" id="ship-file" class="sr" multiple accept=".pdf,application/pdf,image/png,image/jpeg,image/gif,image/webp,image/heic">
-        <label for="ship-file" id="ship-file-label" class="btn ghost" tabindex="0">Choose PDFs or pictures</label>
+        <div class="lead-row">
+          <input type="file" id="ship-file" class="sr" multiple accept=".pdf,application/pdf,image/png,image/jpeg,image/gif,image/webp,image/heic">
+          <label for="ship-file" id="ship-file-label" class="btn ghost grow" tabindex="0">Choose PDFs or pictures</label>
+          <button type="button" class="info" aria-label="About label files" data-tip="An Amazon return label or any carrier label, as a PDF or picture. You can also drop files here, or copy a label picture and press ⌘V. Choose several files to line them up; they go on two at a time.">i</button>
+        </div>
         <div id="waiting" class="waiting" hidden>
-          <span class="fl">Waiting to go on the sheet (<span id="wait-count">0</span>)</span>
+          <span class="fl">Waiting (<span id="wait-count">0</span>)</span>
           <ol id="wait-list" class="book-list"></ol>
           <button type="button" id="wait-place" class="btn primary wide">Put the next labels on this sheet</button>
           <button type="button" id="wait-clear" class="btn link">Clear the list</button>
@@ -175,15 +180,15 @@
             <canvas id="crop-canvas"></canvas>
             <div id="crop-box" class="crop-box" hidden></div>
           </div>
-          <p class="hint">Drag across the label to change what’s used.</p>
           <div class="row">
             <button type="button" id="crop-find" class="btn ghost sm">Find the label</button>
             <button type="button" id="crop-all" class="btn ghost sm">Whole page</button>
             <button type="button" id="crop-turn" class="btn ghost sm">Turn 90°</button>
+            <button type="button" class="info" aria-label="About choosing the label area" data-tip="The panel finds the label’s printed border. To use a different area, drag across the preview.">i</button>
           </div>
           <div class="fit">
             <div class="fit-label"><canvas id="fit-canvas"></canvas></div>
-            <p class="hint">How it will sit on the label.</p>
+            <p class="hint">On the label</p>
           </div>
           <button type="button" id="ship-place" class="btn primary wide">Put on the next open label</button>
         </div>
@@ -213,9 +218,8 @@
           </div>
         </div>
         <div id="addr-ship">
-          <label class="fl" for="from-addr">From (your return address)</label>
+          <label class="fl" for="from-addr">From (remembered)</label>
           <textarea id="from-addr" rows="3" spellcheck="false" placeholder="Your name&#10;Street address&#10;City, State ZIP"></textarea>
-          <p class="hint">Remembered for next time.</p>
           <label class="fl" for="to-pick">Ship to</label>
           <select id="to-pick"></select>
           <textarea id="to-addr" rows="4" spellcheck="false" placeholder="Recipient name&#10;Street address&#10;City, State ZIP" aria-label="Ship to address"></textarea>
@@ -223,33 +227,33 @@
           <button type="button" id="to-save" class="btn link">Save Ship to in address book</button>
         </div>
         <details class="inner">
-          <summary>Address book (<span id="book-count">0</span>)</summary>
+          <summary>Address book (<span id="book-count">0</span>) <button type="button" class="info" aria-label="About the address book" data-tip="Import contacts from the Mac Contacts app (.vcf), Google Contacts (.csv) or an Excel list. Copy all puts your addresses on the clipboard, ready to paste into Excel.">i</button></summary>
           <ul id="book-list" class="book-list"></ul>
           <div class="row">
             <input type="file" id="book-file" class="sr" accept=".vcf,.csv,.txt,.xlsx,text/vcard,text/csv">
             <label for="book-file" class="btn ghost sm" tabindex="0" id="book-file-label">Import contacts</label>
             <button type="button" id="book-export" class="btn ghost sm">Copy all</button>
           </div>
-          <p class="hint">Import a contacts file exported from the Mac Contacts app (.vcf) or Google Contacts (.csv), or an Excel list. Copy all puts your addresses on the clipboard, ready to paste into Excel as a backup.</p>
           <textarea id="book-csv" rows="4" hidden aria-label="Address book as CSV"></textarea>
         </details>
       </div>
 
       <!-- Table: a spreadsheet-like window for many addresses -->
       <div id="pane-table" class="card" role="tabpanel" hidden>
-        <p class="hint">Opens a bigger window with a table: one row per label. Type addresses, paste cells from Excel or Numbers, or open an Excel or CSV file. Then fill the open labels in order.</p>
-        <button type="button" id="table-open" class="btn primary wide">Open the table window</button>
+        <div class="lead-row">
+          <button type="button" id="table-open" class="btn primary grow">Open the table window</button>
+          <button type="button" class="info" aria-label="About the table window" data-tip="A bigger window with one row per open label. Type addresses, paste cells from Excel or Numbers, or open an Excel, CSV or contacts file. Street suggestions appear as you type.">i</button>
+        </div>
         <p id="table-msg" class="hint"></p>
       </div>
 
       <!-- Numbers, QR codes and barcodes -->
       <div id="pane-codes" class="card" role="tabpanel" hidden>
-        <p class="hint">Number labels in order, for boxes, bins or inventory, with a QR code or barcode if you like. In the text, {n} is the number and {total} is the total.</p>
-        <label class="fl" for="num-text">Text</label>
+        <div class="fl-row"><label class="fl" for="num-text">Text</label><button type="button" class="info" aria-label="About the text" data-tip="{n} is each label’s number and {total} is the total, so “Box {n} of {total}” prints Box 1 of 12, Box 2 of 12 and so on. Leave Total empty to use the last number.">i</button></div>
         <input id="num-text" type="text" spellcheck="false" placeholder="Box {n} of {total}">
         <div class="grid2">
           <div><label class="fl" for="num-start">First number</label><input id="num-start" type="number" min="0" value="1" inputmode="numeric"></div>
-          <div><label class="fl" for="num-count">How many labels</label><input id="num-count" type="number" min="1" value="1" inputmode="numeric"></div>
+          <div><label class="fl" for="num-count">How many</label><input id="num-count" type="number" min="1" value="1" inputmode="numeric"></div>
           <div><label class="fl" for="num-pad">Digits</label><select id="num-pad"><option value="0">As is (7)</option><option value="2">2 (07)</option><option value="3">3 (007)</option><option value="4">4 (0007)</option></select></div>
           <div><label class="fl" for="num-total">Total</label><input id="num-total" type="number" min="0" inputmode="numeric" placeholder="Last number"></div>
         </div>
@@ -260,9 +264,8 @@
           <button type="button" role="radio" data-kind="bar">Barcode</button>
         </div>
         <div id="code-data-row" hidden>
-          <label class="fl" for="code-data">What the code holds</label>
-          <input id="code-data" type="text" spellcheck="false" placeholder="The same as the text">
-          <p class="hint">A web address, a part number like BIN-{n}, or anything else. Barcodes use Code 128, which most scanners read.</p>
+          <div class="fl-row"><label class="fl" for="code-data">Code holds</label><button type="button" class="info" aria-label="About what the code holds" data-tip="What a scanner or phone reads: a web address, a part number like BIN-{n}, or anything else. Leave it empty to use the label’s text. Barcodes use Code 128, which most scanners read.">i</button></div>
+          <input id="code-data" type="text" spellcheck="false" placeholder="The label’s text">
         </div>
         <div class="fit">
           <div class="fit-label"><canvas id="code-canvas"></canvas></div>
@@ -282,17 +285,17 @@
         <p id="feed-text"></p>
       </div>
       <div id="warn-pass" class="note warn-note" hidden>
-        <p>Avery says laser label sheets should go through a laser printer only once. The heat softens the glue, so each extra trip raises the chance of a label peeling off inside the printer.</p>
+        <p>Second trip for this sheet. Avery advises one pass through a laser printer, because heat softens the glue.</p>
         <button type="button" id="warn-pass-hide" class="btn link">Don’t show again</button>
       </div>
       <div id="test-check" class="note" hidden>
-        <p>Did the test page line up with your labels?</p>
+        <p>Did the test page line up?</p>
         <div class="row">
           <button type="button" id="test-yes" class="btn ghost sm">Yes</button>
           <button type="button" id="test-no" class="btn ghost sm">No, adjust</button>
           <label for="scan-file" id="scan-label" class="btn ghost sm" tabindex="0">Use a scan</label>
+          <button type="button" class="info" aria-label="About using a scan" data-tip="Scan the printed test page on your printer’s scanner: the whole page, at 100%, top edge against the top of the glass. Choose the scan, and the panel measures how far off it printed.">i</button>
         </div>
-        <p class="hint small">Scanner on your printer? Scan the printed test page (the whole page, at 100%, top edge against the top of the glass) and choose the scan. The panel measures it for you.</p>
       </div>
       <input type="file" id="scan-file" class="sr" accept=".pdf,application/pdf,image/png,image/jpeg,image/tiff">
       <div id="scan-result" class="note" hidden>
@@ -323,10 +326,10 @@
         <button type="button" id="undo-btn" class="btn ghost sm">Undo</button>
       </div>
       <p id="print-watch" class="hint small"></p>
-      <p class="hint">New printer or new pack of labels? <button type="button" id="test-btn" class="btn link inline">Make a test page</button>, print it on scrap paper, and hold it behind a label sheet against a light to check that the boxes line up.</p>
+      <p class="hint">New printer or labels? <button type="button" id="test-btn" class="btn link inline">Make a test page</button> <button type="button" class="info" aria-label="About the test page" data-tip="Print it on plain paper at 100% scale. Hold it behind a label sheet against a light to see whether the boxes line up.">i</button></p>
     </section>
 
-    <p id="save-hint" class="save-hint" hidden>Save this document once (⌘S). After that, the panel saves it for you after every change.</p>
+    <p id="save-hint" class="save-hint" hidden>Save this sheet once (⌘S). After that it saves itself.</p>
 
     <details id="sheets-box" class="more">
       <summary>Your sheets (<span id="sheets-count">0</span>)</summary>
@@ -334,19 +337,19 @@
     </details>
 
     <details id="stock-box" class="more">
-      <summary>Label stock <span id="stock-sum"></span></summary>
+      <summary>Label stock <span id="stock-sum"></span> <button type="button" id="stock-info" class="info" aria-label="About label stock" data-tip="">i</button></summary>
       <div class="settings">
-        <p class="hint">Count the sheets of these labels you have. A sheet comes off the count the first time it goes through the printer, and you get a reminder when you’re running low.</p>
         <div class="grid2">
           <div><label class="fl" for="stock-on">Sheets you have</label><input id="stock-on" type="number" min="0" max="9999" inputmode="numeric"></div>
           <div><label class="fl" for="stock-pack">Sheets in a pack</label><input id="stock-pack" type="number" min="1" max="9999" inputmode="numeric"></div>
           <div><label class="fl" for="stock-warn">Remind me at</label><input id="stock-warn" type="number" min="0" max="9999" inputmode="numeric" placeholder="5"></div>
           <div><label class="fl" for="stock-packs">Packs to reorder</label><input id="stock-packs" type="number" min="1" max="99" value="1" inputmode="numeric"></div>
         </div>
-        <label class="fl" for="stock-link">Where you buy them (link to the product page)</label>
-        <input id="stock-link" type="url" spellcheck="false" autocomplete="off" placeholder="https://www.amazon.com/dp/…">
-        <p id="stock-link-msg" class="hint"></p>
-        <p id="stock-kind" class="hint"></p>
+        <div>
+          <div class="fl-row"><label class="fl" for="stock-link">Where you buy them</label><button type="button" class="info" aria-label="About the store link" data-tip="Paste the link to the product page. With an Amazon or Walmart link, Reorder adds the labels straight to your cart. Other stores open the product page.">i</button></div>
+          <input id="stock-link" type="url" spellcheck="false" autocomplete="off" placeholder="https://www.amazon.com/dp/…">
+          <p id="stock-link-msg" class="hint" hidden></p>
+        </div>
         <div class="row">
           <button type="button" id="stock-save" class="btn ghost sm">Save</button>
           <button type="button" id="stock-got" class="btn ghost sm" hidden>I got a new pack</button>
@@ -364,41 +367,54 @@
     <details id="settings" class="more">
       <summary>Settings</summary>
       <div class="settings">
-        <label class="check"><input type="checkbox" id="auto-mark" checked> Mark labels used automatically when Word prints</label>
-        <label id="arrow-row" class="check"><input type="checkbox" id="feed-arrow" checked> Print a small “▲ top” mark in the sheet’s blank top strip</label>
+        <label class="check"><input type="checkbox" id="auto-mark" checked> Mark labels used when Word prints</label>
+        <label id="arrow-row" class="check"><input type="checkbox" id="feed-arrow" checked> Print a small “▲ top” mark above the labels</label>
         <div class="row">
-          <label for="trip-limit">Trips through the printer per sheet</label>
+          <label for="trip-limit">Trips per sheet</label>
           <input id="trip-limit" type="number" min="1" max="20" value="3" inputmode="numeric">
+          <button type="button" class="info" aria-label="About trips per sheet" data-tip="How many times a sheet may go through the printer. Avery advises one pass for laser labels, since heat softens the glue; the panel warns before each extra trip.">i</button>
         </div>
         <div class="row">
           <label for="home-country">You mail from</label>
           <select id="home-country" class="fit"><option value="US">the United States</option><option value="CA">Canada</option></select>
         </div>
         <div id="geo" class="nudge">
-          <span class="fl">Address suggestions</span>
-          <label class="check"><input type="checkbox" id="suggest-on" checked> Suggest US and Canadian addresses as I type a street in the table window</label>
-          <p class="hint">Suggestions come from the free Photon service by Komoot, which sends what you type to Photon. To use your own allowance instead, paste a free Geoapify key below; it stays on this Mac. <a href="https://therearenousernamesleft.github.io/label-sheet-keeper/#address-suggestions" target="_blank" rel="noopener">How to get a key</a></p>
+          <span class="fl">Address suggestions <button type="button" class="info" aria-label="About address suggestions" data-tip="As you type a street in the table window, the panel suggests US and Canadian addresses from the free Photon service (OpenStreetMap data). What you type is sent to Photon. A free Geoapify key gives you your own allowance; it stays on this Mac.">i</button></span>
+          <label class="check"><input type="checkbox" id="suggest-on" checked> Suggest addresses in the table window</label>
           <div class="row">
-            <input id="geo-key" type="text" autocomplete="off" spellcheck="false" placeholder="Paste your Geoapify API key" aria-label="Geoapify API key">
+            <input id="geo-key" type="text" autocomplete="off" spellcheck="false" placeholder="Geoapify key (optional)" aria-label="Geoapify API key">
           </div>
           <div class="row">
             <button type="button" id="geo-save" class="btn ghost sm">Save key</button>
             <button type="button" id="geo-remove" class="btn link sm" hidden>Remove key</button>
           </div>
           <p id="geo-status" class="hint" role="status"></p>
+          <details class="inner steps">
+            <summary>How to get a key</summary>
+            <ol class="plain-list">
+              <li>Sign up free at geoapify.com (no card needed).</li>
+              <li>Create a project and copy its API key.</li>
+              <li>In the key’s settings, allow only <code>https://therearenousernamesleft.github.io</code>.</li>
+              <li>Paste the key above and click Save key.</li>
+            </ol>
+          </details>
         </div>
         <div id="nudge" class="nudge">
-          <span class="fl">Printer adjustment for this size</span>
+          <span class="fl">Printer adjustment for this size <button type="button" class="info" aria-label="About printer adjustment" data-tip="Moves the labels on new sheets and test pages. Use a minus sign to move left or up; 0.06 in is about 1/16 in. Snug the paper guides first, and adjust only if test pages are off the same way every time.">i</button></span>
           <div class="row">
-            <label for="nudge-x">Move right</label><input id="nudge-x" type="number" step="0.03" min="-0.5" max="0.5" value="0"><span class="unit">in</span>
-            <label for="nudge-y">Move down</label><input id="nudge-y" type="number" step="0.03" min="-0.5" max="0.5" value="0"><span class="unit">in</span>
+            <label for="nudge-x">Right</label><input id="nudge-x" type="number" step="0.03" min="-0.5" max="0.5" value="0"><span class="unit">in</span>
+            <label for="nudge-y">Down</label><input id="nudge-y" type="number" step="0.03" min="-0.5" max="0.5" value="0"><span class="unit">in</span>
           </div>
-          <p class="hint">Use a minus sign to move left or up. 0.06 in is about 1/16 in. Slide the printer’s paper guides snug against the sheet first; only adjust if the test page is off the same way every time.</p>
-          <p class="hint">Or <label for="scan-file" id="scan-label2" class="btn link inline" tabindex="0">use a scan of the test page</label> to work it out.</p>
           <div class="row">
             <button type="button" id="nudge-save" class="btn ghost sm">Save</button>
+            <label for="scan-file" id="scan-label2" class="btn ghost sm" tabindex="0">Use a scan</label>
             <button type="button" id="nudge-apply" class="btn ghost sm" hidden>Apply to this sheet</button>
           </div>
+        </div>
+        <div id="backup-sheet-slot" class="nudge"></div>
+        <div class="nudge">
+          <span class="fl">About this panel</span>
+          <dl id="about-list" class="about-list"></dl>
         </div>
       </div>
     </details>
@@ -409,29 +425,23 @@
       <button type="button" id="rebuild-btn" class="btn link">Repair this sheet</button>
       <button type="button" id="refresh-btn" class="btn link">Refresh</button>
     </footer>
-
-    <details class="more about">
-      <summary>About this panel</summary>
-      <dl id="about-list" class="about-list"></dl>
-    </details>
   </section>
 
-  <details id="backup-box" class="more" hidden>
-    <summary>Back up or restore settings</summary>
-    <div class="settings">
-      <p class="hint">A backup is a Word document with your address book, return address, label sizes, printer adjustments, label stock and logo. Keep it to move to another Mac or to start over.</p>
-      <label id="backup-key-row" class="check" hidden><input type="checkbox" id="backup-key"> Include my Geoapify key</label>
-      <div class="row">
-        <button type="button" id="backup-make" class="btn ghost sm">Make a backup</button>
-        <input type="file" id="restore-file" class="sr" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-        <label for="restore-file" class="btn ghost sm" tabindex="0">Restore from a backup file</label>
-      </div>
+  <!-- Back up and restore: shown in Settings on a sheet, or on its own elsewhere -->
+  <div id="backup-block" class="backup-block">
+    <span class="fl backup-head">Backup <button type="button" class="info" aria-label="About backups" data-tip="Saves your address book, return address, label sizes, printer adjustments, label stock and logo in a Word document. Restore it on this Mac or another one.">i</button></span>
+    <label id="backup-key-row" class="check" hidden><input type="checkbox" id="backup-key"> Include my Geoapify key</label>
+    <div class="row">
+      <button type="button" id="backup-make" class="btn ghost sm">Make a backup</button>
+      <input type="file" id="restore-file" class="sr" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+      <label for="restore-file" class="btn ghost sm" tabindex="0">Restore from a file</label>
     </div>
-  </details>
+  </div>
 
   <p id="error" class="error" role="alert" hidden></p>
 </main>
 <p id="say" class="say" role="status" aria-live="polite"></p>
+<div id="tipbox" class="tipbox" role="tooltip" hidden></div>
 <script>document.write('<script src="taskpane.js?t=' + window.LSK_T + '"><\/script>');</script>
 </body>
 </html>

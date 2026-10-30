@@ -208,3 +208,20 @@ ol.book-list li span::before{counter-increment:wait;content:counter(wait) ". ";c
 #pane-codes .seg button{flex:1;padding:6px 8px}
 .plain-list{margin:0;padding-left:18px;display:grid;gap:3px;font-size:12.5px}
 .done-note{margin:0;padding:8px 10px;border-radius:8px;background:var(--accent-soft);border:1px solid var(--accent);font-size:12.5px}
+
+/* (i) buttons and their explanation box */
+.info{display:inline-grid;place-items:center;flex:none;width:16px;height:16px;margin:0 0 0 2px;padding:0;border:1.25px solid var(--muted);border-radius:50%;background:none;color:var(--muted);font:700 10px/1 Georgia,"Times New Roman",serif;font-style:italic;cursor:help;vertical-align:middle;position:relative;top:-1px;letter-spacing:0}
+.info:hover,.info:focus-visible,.info[aria-describedby]{border-color:var(--accent);color:var(--accent)}
+.step h2 .info{margin-left:0}
+.tipbox{position:fixed;z-index:50;padding:8px 10px;border-radius:8px;background:var(--ink);color:var(--surface);font:12px/1.45 var(--f);box-shadow:var(--shadow);pointer-events:none;white-space:pre-line}
+.lead-row{display:flex;align-items:center;gap:8px}
+.lead-row .here{flex:1}
+.lead-row .grow{flex:1}
+.fl-row{display:flex;align-items:center;gap:4px}
+.backup-block{display:grid;gap:6px}
+#backup-none .backup-head{display:none}
+#backup-none .backup-block{margin-top:2px}
+.steps summary{font-weight:500;color:var(--muted)}
+.steps code{font:11px var(--f-mono);overflow-wrap:anywhere}
+.steps .plain-list{padding-left:18px}
+.row.pair{display:grid;grid-template-columns:1fr auto;gap:8px}

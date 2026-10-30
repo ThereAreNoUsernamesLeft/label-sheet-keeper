@@ -1657,7 +1657,7 @@
     var withKey = $('backup-key').checked && !!store(LS.geoKey);
     var payload = { app: 'Label Sheet Keeper', v: 1, at: Date.now(), version: VERSION, data: backupKeys(withKey) };
     var lines = ['Made ' + fmtDate(payload.at) + ' with version ' + VERSION + '. It has:'].concat(backupSummary(payload.data).map(function (l) { return '•  ' + l; })).concat(['',
-      'To restore these settings, open this file in Word and click Restore these settings in the Label Sheet Keeper panel. Or, in the panel, open Back up or restore settings, click Restore from a backup file, and choose this file.',
+      'To restore, open this file in Word and click Restore these settings in the Label Sheet Keeper panel. Or choose this file with Restore from a file in the panel’s backup settings.',
       'This file holds your addresses' + (withKey ? ' and your Geoapify key' : '') + '. Keep it somewhere private.']);
     return findAddinRef().then(function (ref) {
       return S.buildBackupDocx(null, { data: toB64(JSON.stringify(payload)), lines: lines, addinRef: ref });
@@ -1738,7 +1738,7 @@
     var ul = $('backup-sum'), bad = backupHere === 'bad';
     ul.innerHTML = '';
     $('backup-restore').hidden = bad;
-    if (bad) { $('backup-made').textContent = 'The settings in this backup couldn’t be read. If you have the file, open the panel in any other document and use Restore from a backup file.'; return; }
+    if (bad) { $('backup-made').textContent = 'This backup couldn’t be read here. Open the panel in another document and use Restore from a file.'; return; }
     $('backup-made').textContent = 'Made ' + fmtDate(backupHere.at) + (backupHere.version ? ' with version ' + backupHere.version : '') + '. It has:';
     backupSummary(backupHere.data).forEach(function (l) { ul.appendChild(el('li', '', l)); });
   }
@@ -1748,7 +1748,9 @@
     ['v-loading', 'v-outside', 'v-old', 'v-none', 'v-broken', 'v-sheet', 'v-backup'].forEach(function (id) { $(id).hidden = id !== view; });
   }
   function render() {
-    $('backup-box').hidden = !(st.kind === 'sheet' || st.kind === 'none');
+    // The backup tools sit in Settings on a sheet, and in their own box elsewhere.
+    var slot = st.kind === 'sheet' && !choosing ? $('backup-sheet-slot') : $('backup-none-slot');
+    if ($('backup-block').parentNode !== slot) slot.appendChild($('backup-block'));
     $('backup-key-row').hidden = !store(LS.geoKey);
     if (st.kind === 'backup') { renderBackupView(); return; }
     if (st.kind === 'none' || choosing) { renderChooser(); show('v-none'); return; }
@@ -1831,9 +1833,7 @@
     $('fmt-problems').hidden = !F.invalid.length;
     $('fmt-problems').textContent = F.invalid.map(function (x) { return 'The size “' + x.id + '” in formats.js was skipped: ' + x.problems.join('; ') + '.'; }).join(' ');
     $('choose-title').textContent = choosing ? 'Make another sheet' : 'Make a label sheet';
-    $('choose-lead').textContent = choosing
-      ? 'Choose the labels for the new sheet. It opens as a new Word document.'
-      : 'This document isn’t a label sheet yet. Choose the labels you have, and the sheet opens as a new Word document laid out to match them.';
+    $('choose-lead').textContent = choosing ? 'It opens as a new Word document.' : 'Choose your labels. The sheet opens as a new Word document.';
     $('back-btn').hidden = !(choosing && st.kind === 'sheet');
     var entries = sheetEntries(true);
     $('finish-first').hidden = !entries.length;
@@ -1941,7 +1941,7 @@
     if (tab === 'codes') renderCodes();
     if (tab === 'table') {
       $('table-open').disabled = !n;
-      $('table-msg').textContent = n ? plural(openList().length, 'open label') + ' on this sheet. Extra addresses go on new sheets.' : 'There are no open labels on this sheet.';
+      $('table-msg').textContent = n ? plural(openList().length, 'open label') + ' on this sheet.' : 'There are no open labels on this sheet.';
     }
 
     // Text that may not fit
@@ -2047,7 +2047,7 @@
     var sk = stockFor(f.id), low = stockLow(sk);
     $('stock-low').hidden = !low;
     if (low) {
-      $('stock-low-msg').textContent = (sk.on ? plural(sk.on, 'sheet') + ' of ' : 'No sheets of ') + 'these labels left' + (sk.on ? '.' : ' after this one.') + (sk.link ? '' : ' Add where you buy them in Label stock to reorder in one click.');
+      $('stock-low-msg').textContent = (sk.on ? plural(sk.on, 'sheet') + ' of ' : 'No sheets of ') + 'these labels left' + (sk.on ? '.' : ' after this one.');
       $('stock-low-order').textContent = sk.link ? 'Reorder' : 'Set up reorder';
       $('stock-low-got').hidden = !sk.pack;
     }
@@ -2063,15 +2063,15 @@
     $('stock-order').hidden = !sk.link;
     $('stock-off').hidden = !counting;
     var pn = productNumbers(f);
-    $('stock-kind').textContent = pn.laser
-      ? 'These labels are Avery ' + pn.laser + ' for laser printers' + (pn.inkjet ? ' and Avery ' + pn.inkjet + ' for inkjet printers' : '') + '. Buy the kind made for your printer.'
-      : 'Buy labels made for your kind of printer: laser labels for a laser printer, inkjet labels for an inkjet.';
+    $('stock-info').setAttribute('data-tip', 'Count your sheets of these labels. A sheet comes off the count the first time it goes through the printer, and you get a reminder when you’re low. ' +
+      (pn.laser ? 'Buy Avery ' + pn.laser + ' for a laser printer' + (pn.inkjet ? ' or ' + pn.inkjet + ' for an inkjet' : '') + '.' : 'Buy labels made for your kind of printer.'));
     renderStockLink();
   }
   function renderStockLink() {
     var v = $('stock-link').value.trim(), r = v ? T.reorderLink(v, 1) : null, m = $('stock-link-msg');
     m.className = v && !r ? 'warn' : 'hint';
-    m.textContent = !v ? 'Amazon and Walmart links add the labels straight to your cart. Other stores open the product page.'
+    m.hidden = !v;
+    m.textContent = !v ? ''
       : !r ? 'Paste the whole web address, starting with https://'
       : r.cart ? 'Reorder adds the labels to your ' + r.store + ' cart.' : 'Reorder opens this page at ' + r.store + '. Add the labels to your cart there.';
   }
@@ -2130,7 +2130,7 @@
     var key = store(LS.geoKey);
     $('geo-remove').hidden = !key;
     $('geo-save').textContent = key ? 'Replace key' : 'Save key';
-    $('geo-status').textContent = note || (key ? 'A Geoapify key ending in ' + key.slice(-4) + ' is saved on this Mac. Suggestions use it.' : 'No Geoapify key. Suggestions use Photon.');
+    $('geo-status').textContent = note || (key ? 'Using your Geoapify key (…' + key.slice(-4) + ').' : 'Using Photon. No key needed.');
   }
 
   function renderAbout() {
@@ -2437,13 +2437,13 @@
       renderGeo('Checking the key with Geoapify…');
       T.suggestAddresses('1 Main St', key).then(function () {
         store(LS.geoKey, key); $('geo-key').value = '';
-        renderGeo('Key saved. Suggestions in the table window now come from Geoapify.');
+        renderGeo('Key saved. Suggestions now use Geoapify.');
       }, function (e) {
         if (e && (e.status === 401 || e.status === 403)) renderGeo('Geoapify didn’t accept that key. Check that you copied all of it, and that the key allows this add-in’s web address.');
         else { store(LS.geoKey, key); $('geo-key').value = ''; renderGeo('Saved, but Geoapify couldn’t be reached to check the key. Suggestions will start once it can.'); }
       }).then(function () { $('geo-save').disabled = false; });
     });
-    $('geo-remove').addEventListener('click', function () { store(LS.geoKey, null); renderGeo('Key removed from this Mac. Suggestions use Photon again.'); });
+    $('geo-remove').addEventListener('click', function () { store(LS.geoKey, null); renderGeo('Key removed. Suggestions use Photon again.'); });
     $('suggest-on').addEventListener('change', function () { store(LS.suggest, $('suggest-on').checked ? null : 'off'); });
     $('nudge-apply').addEventListener('click', function () {
       var nd = nudgeFor(st.fmt.id), L = S.layout(st.fmt, { margins: st.margins, nudge: nd });
@@ -2696,6 +2696,50 @@
     });
   }
 
+  // ---------- little (i) explanations ----------
+  // Pointing at an (i) shows its explanation in a small box; it goes away when
+  // the pointer leaves. Keyboard focus and a click (or tap) show it too.
+  var tipFor = null;
+  function showTip(btn) {
+    var box = $('tipbox'), text = btn.getAttribute('data-tip');
+    if (!text) return;
+    if (tipFor && tipFor !== btn) tipFor.removeAttribute('aria-describedby');
+    tipFor = btn;
+    box.textContent = text;
+    box.hidden = false;
+    btn.setAttribute('aria-describedby', 'tipbox');
+    var vw = document.documentElement.clientWidth || window.innerWidth, vh = window.innerHeight;
+    box.style.maxWidth = Math.min(280, vw - 16) + 'px';
+    box.style.left = '0px'; box.style.top = '0px';
+    var r = btn.getBoundingClientRect(), w = box.offsetWidth, h = box.offsetHeight;
+    var left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), Math.max(8, vw - w - 8));
+    var top = r.bottom + 6;
+    if (top + h > vh - 8 && r.top - h - 6 >= 8) top = r.top - h - 6;
+    box.style.left = Math.round(left) + 'px'; box.style.top = Math.round(top) + 'px';
+  }
+  function hideTip() {
+    if (tipFor) tipFor.removeAttribute('aria-describedby');
+    tipFor = null;
+    $('tipbox').hidden = true;
+  }
+  function infoFrom(node) { return node && node.closest ? node.closest('.info') : null; }
+  function wireTips() {
+    document.addEventListener('mouseover', function (e) { var b = infoFrom(e.target); if (b && b !== tipFor) showTip(b); });
+    document.addEventListener('mouseout', function (e) { var b = infoFrom(e.target); if (b && b === tipFor && !b.contains(e.relatedTarget)) hideTip(); });
+    document.addEventListener('focusin', function (e) { var b = infoFrom(e.target); if (b) showTip(b); });
+    document.addEventListener('focusout', function (e) { if (infoFrom(e.target) === tipFor) hideTip(); });
+    // A click shows it (for touch); it must not open a section or focus a field.
+    document.addEventListener('click', function (e) {
+      var b = infoFrom(e.target);
+      if (!b) { if (tipFor) hideTip(); return; }
+      e.preventDefault(); e.stopPropagation();
+      showTip(b);
+    }, true);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && tipFor) hideTip(); });
+    window.addEventListener('scroll', function () { if (tipFor) hideTip(); }, true);
+    window.addEventListener('resize', function () { if (tipFor) hideTip(); });
+  }
+
   // ---------- start ----------
   function demo() {
     // Preview outside Word: taskpane.html?demo (address sheet), ?demo=ship, ?demo&choose
@@ -2716,11 +2760,12 @@
     if (typeof Office === 'undefined') { show('v-outside'); return; }
     Office.onReady(function (info) {
       if (!info || info.host !== Office.HostType.Word) {
-        if (/[?&]demo\b/.test(location.search)) { wire(); demo(); } else show('v-outside');
+        if (/[?&]demo\b/.test(location.search)) { wire(); wireTips(); demo(); } else show('v-outside');
         return;
       }
       if (!Office.context.requirements.isSetSupported('WordApi', '1.3')) { show('v-old'); return; }
       wire();
+      wireTips();
       refresh();
       startPrintWatch();
       // Learn how Word attaches this add-in, so new sheets can open with the panel.

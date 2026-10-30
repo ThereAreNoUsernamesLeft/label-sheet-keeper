@@ -74,14 +74,15 @@
         var d = document.createElement('tr'), td = document.createElement('td');
         d.className = 'divider';
         td.colSpan = COLS.length + 2;
-        td.textContent = 'New sheet ' + (extra / per + 1) + ' · rows below go on a new sheet that opens in its own window';
+        td.textContent = 'Extra sheet ' + (extra / per + 1) + ' · rows below don’t fit on this sheet';
+        td.title = 'These go on your other part-used sheets of this size, or on a new sheet. The panel asks which.';
         d.appendChild(td);
         rowsEl.insertBefore(d, tr);
       }
     });
     var extraSlots = known ? Math.max(0, last + 1 - open) : 0;
     $('count').textContent = plural(filled, 'address', 'es') + (known ? ' · ' + plural(open, 'open label') + ' on your sheet' : '') +
-      (extraSlots ? ' · ' + (extraSlots === 1 ? '1 row goes' : extraSlots + ' rows go') + ' on ' + plural(Math.ceil(extraSlots / per), 'new sheet') : '');
+      (extraSlots ? ' · ' + (extraSlots === 1 ? '1 row doesn’t' : extraSlots + ' rows don’t') + ' fit on it' : '');
     $('fill').disabled = !filled;
     store(DRAFT, JSON.stringify(readRows()));
   }

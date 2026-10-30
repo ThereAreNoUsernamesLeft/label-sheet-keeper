@@ -34,6 +34,8 @@ Panel address: https://therearenousernamesleft.github.io/label-sheet-keeper/task
 
 ## Everyday use
 
+Point at an **ⓘ** in the panel for a short explanation of that tool.
+
 1. Click **Label Sheet**, choose your labels, and click **Make the sheet**. A new document opens with the panel. Save it, for example as `Labels 30 per sheet.docx`.
 2. **Mark used labels:** click each label on the map that's already peeled off your sheet.
 3. **Fill labels:**
@@ -63,7 +65,7 @@ On sheets with a blank strip above the labels, the panel prints a small "▲ TOP
 
 With a new printer or a new pack of labels, click **Make a test page** and print it on scrap paper. Hold it behind a label sheet against a light. The panel then asks whether it lined up. If the boxes are off the same way every time, enter the shift in **Settings › Printer adjustment**. New sheets use it, and **Apply to this sheet** moves the labels on the sheet you have open.
 
-If your printer has a scanner, the panel can measure the test page for you: scan the printed test page (the whole page, at 100%, top edge against the top of the glass), then click **Use a scan** and choose the scan (PDF, PNG or JPEG). The panel finds the boxes, says how far off they printed, and offers the adjustment. This works for sizes that print upright.
+If your printer has a scanner, the panel can measure the test page for you: scan the printed test page (the whole page, at 100%, top edge against the top of the glass), then click **Use a scan** (after a test page, or in **Settings › Printer adjustment**) and choose the scan (PDF, PNG or JPEG). The panel finds the boxes, says how far off they printed, and offers the adjustment. This works for sizes that print upright.
 
 ### Shipping labels (2 per sheet and full sheet)
 
@@ -105,9 +107,9 @@ Buy the kind made for your printer: laser labels (Avery 5160, 5126…) for a las
 
 ### Back up and restore settings
 
-**Back up or restore settings** (at the bottom of the panel) makes a Word document holding your address book, return address, label sizes, printer adjustments, label stock and logo. Your Geoapify key is left out unless you tick **Include my Geoapify key**. Save the document somewhere safe; it holds your addresses, so keep it private.
+**Settings › Backup** (or **Back up or restore settings** in a document that isn't a sheet) makes a Word document holding your address book, return address, label sizes, printer adjustments, label stock and logo. Your Geoapify key is left out unless you tick **Include my Geoapify key**. Save the document somewhere safe; it holds your addresses, so keep it private.
 
-To restore, open the backup in Word and click **Restore these settings**, or click **Restore from a backup file** in the panel and choose it. Restoring replaces the panel's settings on that Mac. Your label sheets are their own documents and aren't part of the backup.
+To restore, open the backup in Word and click **Restore these settings**, or click **Restore from a file** in the panel and choose it. Restoring replaces the panel's settings on that Mac. Your label sheets are their own documents and aren't part of the backup.
 
 ### Your sheets
 
