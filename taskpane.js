@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.4';
+  var VERSION = '1.4.1';
   var ADDIN_ID = '8d491c85-a76d-4d26-a6f5-b7b2dd4a1711';   // must match manifest.xml <Id>
   var F = window.LSK_FORMATS;
   var S = window.LSK_SHEET;
@@ -33,7 +33,7 @@
     addinRef: 'lsk.addinRef', feedArrow: 'lsk.feedArrow', tripLimit: 'lsk.tripLimit', nudge: 'lsk.nudge.', testCheck: 'lsk.testCheck.',
     warnPass: 'lsk.warnPassHidden', last: 'lsk.last.', book: 'lsk.addressBook', design: 'lsk.design', logo: 'lsk.logo',
     custom: 'lsk.customFormats', sheets: 'lsk.sheets', tableInfo: 'lsk.tableInfo', tableDraft: 'lsk.tableDraft',
-    home: 'lsk.homeCountry', geoKey: 'lsk.geoKey'
+    home: 'lsk.homeCountry', geoKey: 'lsk.geoKey', suggest: 'lsk.suggest'
   };
   var USED_TAG = 'lsk-used';
 
@@ -1528,13 +1528,14 @@
     var ap = st.applied || { x: 0, y: 0 };
     $('nudge-apply').hidden = Math.abs(ap.x - nd.x) < 0.001 && Math.abs(ap.y - nd.y) < 0.001;
     $('home-country').value = homeCountry();
+    $('suggest-on').checked = store(LS.suggest) !== 'off';
     renderGeo();
   }
   function renderGeo(note) {
     var key = store(LS.geoKey);
     $('geo-remove').hidden = !key;
     $('geo-save').textContent = key ? 'Replace key' : 'Save key';
-    $('geo-status').textContent = note || (key ? 'A key ending in ' + key.slice(-4) + ' is saved on this Mac.' : 'No key yet. Without one, a ZIP or postal code still fills in the city.');
+    $('geo-status').textContent = note || (key ? 'A Geoapify key ending in ' + key.slice(-4) + ' is saved on this Mac. Suggestions use it.' : 'No Geoapify key. Suggestions use Photon.');
   }
 
   function renderAbout() {
@@ -1772,13 +1773,14 @@
       renderGeo('Checking the key with Geoapify…');
       T.suggestAddresses('1 Main St', key).then(function () {
         store(LS.geoKey, key); $('geo-key').value = '';
-        renderGeo('Key saved. The table window now suggests addresses as you type a street.');
+        renderGeo('Key saved. Suggestions in the table window now come from Geoapify.');
       }, function (e) {
         if (e && (e.status === 401 || e.status === 403)) renderGeo('Geoapify didn’t accept that key. Check that you copied all of it, and that the key allows this add-in’s web address.');
         else { store(LS.geoKey, key); $('geo-key').value = ''; renderGeo('Saved, but Geoapify couldn’t be reached to check the key. Suggestions will start once it can.'); }
       }).then(function () { $('geo-save').disabled = false; });
     });
-    $('geo-remove').addEventListener('click', function () { store(LS.geoKey, null); renderGeo('Key removed from this Mac.'); });
+    $('geo-remove').addEventListener('click', function () { store(LS.geoKey, null); renderGeo('Key removed from this Mac. Suggestions use Photon again.'); });
+    $('suggest-on').addEventListener('change', function () { store(LS.suggest, $('suggest-on').checked ? null : 'off'); });
     $('nudge-apply').addEventListener('click', function () {
       var nd = nudgeFor(st.fmt.id), L = S.layout(st.fmt, { margins: st.margins, nudge: nd });
       if (L.clampedUp) say('These labels can’t move that far up on this sheet. They were moved as far as possible; new sheets get the full adjustment.', 'warn');

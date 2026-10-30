@@ -67,16 +67,20 @@ With a new printer or a new pack of labels, click **Make a test page** and print
 - **Address:** fill in From and Ship to (or pick a saved address). Your return address is remembered.
 - Print the test page once and tell the panel which half of your sheet Label 1 came out on; from then on it says "top label" and "bottom label."
 
-### Address suggestions (optional)
+### Address suggestions
 
-In the table window, a ZIP code or Canadian postal code fills in the city and state or province on its own (using the free Zippopotam.us service). With a free Geoapify key, the table window also suggests full US and Canadian addresses as you type a street.
+In the table window, type a house number and street, and the panel suggests matching US and Canadian addresses. Pick one to fill in the street, city, state or province, and ZIP or postal code. A ZIP code or postal code on its own also fills in the city (using the free Zippopotam.us service).
+
+Suggestions come from [Photon by Komoot](https://photon.komoot.io/), a free service with no sign-up, using [OpenStreetMap](https://www.openstreetmap.org/copyright) data. What you type is sent to Photon. Photon is shared by everyone, so it asks for light use, and some house numbers aren't in OpenStreetMap yet. Turn suggestions off in **Settings › Address suggestions**.
+
+**Bring your own key (optional).** For your own daily allowance, use a free Geoapify key instead:
 
 1. Sign up for a free account at [geoapify.com](https://www.geoapify.com/). No credit card is needed; the free plan includes 3,000 lookups a day.
 2. Create a project and copy its API key.
 3. In the key's settings, add `https://therearenousernamesleft.github.io` as an allowed origin (or HTTP referrer), so the key only works from this add-in.
 4. In Word, open the panel, then **Settings › Address suggestions**. Paste the key and click **Save key**.
 
-The key is kept by the panel on your Mac only, not in this repository or in your Word documents. Suggestions send what you type and the key to Geoapify. On another Mac, paste the key there too.
+The key is kept by the panel on your Mac only, not in this repository or in your Word documents. With a key, suggestions go to Geoapify instead of Photon. On another Mac, paste the key there too.
 
 ### Canadian addresses
 
@@ -112,7 +116,7 @@ You only need to touch `manifest.xml` on your Mac again if the add-in's name or 
 | `table.html`, `table.css`, `table.js` | The table window |
 | `formats.js` | The list of label sizes |
 | `sheetdoc.js` | Builds Word documents laid out for a label size |
-| `lsk-tools.js` | Reads address lists and contacts, formats US and Canadian addresses, looks up ZIP and postal codes, fits text, finds label borders |
+| `lsk-tools.js` | Reads address lists and contacts, formats US and Canadian addresses, looks up ZIP and postal codes, suggests addresses (Photon or Geoapify), fits text, finds label borders |
 | `templates/` | Ready-made blank sheets for each size, in case Word can't open a new document from the panel |
 | `vendor/pdfjs/` | Mozilla PDF.js 3.11.174 (Apache 2.0 license), used to read label PDFs |
 | `vendor/jszip/` | JSZip 3.10.1 (MIT license), used to build and read Word and Excel files |

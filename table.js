@@ -10,7 +10,7 @@
 
   var T = window.LSK_TOOLS;
   var COLS = ['name', 'company', 'street', 'apt', 'city', 'state', 'zip'];
-  var DRAFT = 'lsk.tableDraft', INFO = 'lsk.tableInfo', BOOK = 'lsk.addressBook', GEO_KEY = 'lsk.geoKey';
+  var DRAFT = 'lsk.tableDraft', INFO = 'lsk.tableInfo', BOOK = 'lsk.addressBook', GEO_KEY = 'lsk.geoKey', SUGGEST = 'lsk.suggest';
   var rowsEl = document.getElementById('rows');
 
   function $(id) { return document.getElementById(id); }
@@ -123,7 +123,8 @@
   });
 
   // ---------- filling in addresses ----------
-  function geoKey() { return store(GEO_KEY) || ''; }
+  function geoKey() { return keyTrouble ? '' : (store(GEO_KEY) || ''); }
+  function suggestOn() { return store(SUGGEST) !== 'off'; }
   function cellOf(tr, field) { return tr.querySelectorAll('input')[COLS.indexOf(field)]; }
   function setIfEmpty(inp, v) { if (inp && v && !inp.value.trim()) inp.value = v; }
 
@@ -144,8 +145,23 @@
     }, 350);
   }
 
-  // Address suggestions while typing a street (with a Geoapify key).
-  var sugg = $('sugg'), suggList = $('sugg-list'), suggFor = null, suggItems = [], suggActive = -1, suggTimer = 0, suggSeq = 0, keyTrouble = false;
+  // Address suggestions while typing a street: Photon (free), or Geoapify
+  // with the user's own key.
+  var sugg = $('sugg'), suggList = $('sugg-list'), suggFor = null, suggItems = [], suggActive = -1, suggTimer = 0, suggSeq = 0;
+  var keyTrouble = false, pausedUntil = 0, cache = {};
+  var CREDITS = {
+    photon: [['Photon by Komoot', 'https://photon.komoot.io/'], ['© OpenStreetMap contributors', 'https://www.openstreetmap.org/copyright']],
+    geoapify: [['Powered by Geoapify', 'https://www.geoapify.com/'], ['© OpenStreetMap contributors', 'https://www.openstreetmap.org/copyright']]
+  };
+  function setCredit(source) {
+    var c = $('sugg-credit');
+    c.innerHTML = '';
+    (CREDITS[source] || []).forEach(function (pair, i) {
+      if (i) c.appendChild(document.createTextNode(' · '));
+      var a = document.createElement('a'); a.href = pair[1]; a.target = '_blank'; a.rel = 'noopener'; a.textContent = pair[0];
+      c.appendChild(a);
+    });
+  }
   function closeSugg() { sugg.hidden = true; suggFor = null; suggItems = []; suggActive = -1; }
   function showSugg(inp, items) {
     suggList.innerHTML = '';
@@ -159,6 +175,7 @@
       b.addEventListener('mousedown', function (e) { e.preventDefault(); chooseSugg(i); });
       suggList.appendChild(b);
     });
+    setCredit(items[0].source);
     var r = inp.getBoundingClientRect();
     sugg.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 300)) + 'px';
     sugg.style.top = (r.bottom + 2) + 'px';
@@ -173,27 +190,32 @@
     if (!it || !inp) return;
     var tr = inp.closest('tr');
     inp.value = it.street;
-    cellOf(tr, 'city').value = it.city;
-    cellOf(tr, 'state').value = it.state;
-    cellOf(tr, 'zip').value = it.zip;
+    if (it.city) cellOf(tr, 'city').value = it.city;
+    if (it.state) cellOf(tr, 'state').value = it.state;
+    if (it.zip) cellOf(tr, 'zip').value = it.zip;
     closeSugg();
     update();
     cellOf(tr, 'apt').focus();
   }
   function streetChanged(inp) {
     clearTimeout(suggTimer);
-    var key = geoKey(), text = inp.value.trim();
-    if (!key || keyTrouble || text.length < 4 || !/\d/.test(text) || !/[a-z]/i.test(text)) { if (suggFor === inp) closeSugg(); return; }
+    var text = inp.value.trim();
+    // Only ask once there's a house number and a few letters of the street.
+    if (!suggestOn() || Date.now() < pausedUntil || text.length < 5 || !/\d/.test(text) || !/[a-z]{2}/i.test(text)) { if (suggFor === inp) closeSugg(); return; }
     suggTimer = setTimeout(function () {
       var tr = inp.closest('tr'), city = cellOf(tr, 'city').value.trim(), state = cellOf(tr, 'state').value.trim();
+      var key = geoKey(), q = [text, city, state].filter(Boolean).join(', '), id = (key ? 'g:' : 'p:') + q.toLowerCase();
       var seq = ++suggSeq;
-      T.suggestAddresses([text, city, state].filter(Boolean).join(', '), key).then(function (items) {
+      var got = cache[id] ? Promise.resolve(cache[id]) : T.suggestAddresses(q, key).then(function (items) { cache[id] = items; return items; });
+      got.then(function (items) {
         if (seq === suggSeq && document.activeElement === inp) showSugg(inp, items);
       }).catch(function (e) {
-        if (e && (e.status === 401 || e.status === 403)) { keyTrouble = true; msg('Geoapify didn’t accept the key. Check it in the panel’s Settings.', true); }
-        else if (e && e.status === 429) { keyTrouble = true; msg('Today’s free address suggestions are used up. They come back tomorrow.', true); }
+        var status = e && e.status;
+        if (key && (status === 401 || status === 403)) { keyTrouble = true; msg('Geoapify didn’t accept your key, so suggestions use the free Photon service for now. Check the key in the panel’s Settings.', true); }
+        else if (key && status === 429) { keyTrouble = true; msg('Your Geoapify lookups for today are used up, so suggestions use the free Photon service until tomorrow.', true); }
+        else if (!key && (status === 429 || status === 503)) { pausedUntil = Date.now() + 60000; msg('The free address suggestions are busy. They’ll try again in a minute.', true); }
       });
-    }, 350);
+    }, geoKey() ? 300 : 400);
   }
   rowsEl.addEventListener('input', function (e) {
     var inp = e.target;
@@ -293,7 +315,7 @@
   function start() {
     var info = json(INFO) || {};
     $('info').textContent = (info.name ? info.name + '. ' : '') + 'One row per label; the first column shows which label. Type addresses, paste cells from Excel or Numbers, or open a file. ' +
-      (geoKey() ? 'Type a street for address suggestions.' : 'A ZIP or postal code fills in the city.');
+      (suggestOn() ? 'Type a house number and street for address suggestions.' : 'A ZIP or postal code fills in the city.');
     var draft = json(DRAFT);
     setRows(Array.isArray(draft) ? draft : []);
     fillBookPicker();

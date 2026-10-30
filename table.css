@@ -46,4 +46,5 @@ col.c-n{width:52px} col.c-name{width:17%} col.c-co{width:11%} col.c-st{width:20%
 .sugg button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--ink);font:13px/1.3 var(--f);padding:7px 10px;cursor:pointer}
 .sugg button small{display:block;color:var(--muted);font-size:11.5px}
 .sugg button[aria-selected="true"],.sugg button:hover{background:var(--accent-soft)}
-.sugg-credit{display:block;padding:5px 10px;font-size:11px;color:var(--muted);border-top:1px solid var(--grid);text-decoration:none}
+.sugg-credit{margin:0;padding:5px 10px;font-size:11px;color:var(--muted);border-top:1px solid var(--grid)}
+.sugg-credit a{color:inherit}

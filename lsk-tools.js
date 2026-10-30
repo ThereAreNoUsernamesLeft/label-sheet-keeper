@@ -374,19 +374,67 @@
         return r && r.city ? { city: r.city, state: String(r.state_code || '').toUpperCase(), country: country } : null;
       }).catch(function () { return null; }).then(function (r) { return r || free(); });
   }
-  // Address suggestions in the US and Canada from Geoapify (needs a key).
-  // Resolves to [{ label, sub, street, city, state, zip, country }]; rejects
-  // with err.status 401/403 for a bad key, 429 when the day's lookups are used up.
-  function suggestAddresses(text, key) {
+  // State and province names -> two-letter codes (Photon gives full names).
+  var REGIONS = {
+    alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA', colorado: 'CO', connecticut: 'CT', delaware: 'DE',
+    'district of columbia': 'DC', florida: 'FL', georgia: 'GA', hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA',
+    kansas: 'KS', kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD', massachusetts: 'MA', michigan: 'MI', minnesota: 'MN',
+    mississippi: 'MS', missouri: 'MO', montana: 'MT', nebraska: 'NE', nevada: 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
+    'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH', oklahoma: 'OK', oregon: 'OR',
+    pennsylvania: 'PA', 'rhode island': 'RI', 'south carolina': 'SC', 'south dakota': 'SD', tennessee: 'TN', texas: 'TX', utah: 'UT',
+    vermont: 'VT', virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI', wyoming: 'WY', 'puerto rico': 'PR',
+    alberta: 'AB', 'british columbia': 'BC', manitoba: 'MB', 'new brunswick': 'NB', 'newfoundland and labrador': 'NL', 'nova scotia': 'NS',
+    'northwest territories': 'NT', nunavut: 'NU', ontario: 'ON', 'prince edward island': 'PE', quebec: 'QC', saskatchewan: 'SK', yukon: 'YT',
+    'colombie-britannique': 'BC', 'nouveau-brunswick': 'NB', 'terre-neuve-et-labrador': 'NL', 'nouvelle-ecosse': 'NS',
+    'territoires du nord-ouest': 'NT', 'ile-du-prince-edouard': 'PE'
+  };
+  function regionCode(name) {
+    var s = String(name || '').trim();
+    if (/^[A-Za-z]{2}$/.test(s)) return s.toUpperCase();
+    var k = s.toLowerCase();
+    if (k.normalize) k = k.normalize('NFD').replace(/[̀-ͯ]/g, '');
+    return REGIONS[k] || s;
+  }
+
+  // Address suggestions in the US and Canada while typing a street. With a
+  // Geoapify key they come from Geoapify; otherwise from Photon by Komoot,
+  // a free service with no key (please keep use light). Both use
+  // OpenStreetMap data. Resolves to [{ label, sub, street, city, state, zip,
+  // country, source }]; rejects with err.status (401/403: bad key, 429: too many).
+  function suggestAddresses(text, key) { return key ? geoapifySuggest(text, key) : photonSuggest(text); }
+  function geoapifySuggest(text, key) {
     return fetchJson(GEO + '&limit=5&filter=countrycode:us,ca&text=' + encodeURIComponent(text) + '&apiKey=' + encodeURIComponent(key)).then(function (j) {
       return ((j && j.results) || []).filter(function (r) { return r.street || r.address_line1; }).map(function (r) {
         var country = String(r.country_code || '').toUpperCase() === 'CA' ? 'CA' : 'US';
         var street = r.street ? [r.housenumber, r.street].filter(Boolean).join(' ') : String(r.address_line1 || '');
         return {
           label: r.address_line1 || street, sub: r.address_line2 || '', street: street, city: r.city || '',
-          state: String(r.state_code || '').toUpperCase(), zip: country === 'CA' ? fixPostal(r.postcode) : String(r.postcode || ''), country: country
+          state: String(r.state_code || '').toUpperCase(), zip: country === 'CA' ? fixPostal(r.postcode) : String(r.postcode || ''),
+          country: country, source: 'geoapify'
         };
       });
+    });
+  }
+  var PHOTON = 'https://photon.komoot.io/api/?limit=8&lang=en&layer=house&layer=street&countrycode=US&countrycode=CA&q=';
+  function photonSuggest(text) {
+    // A street without that house number in the map still gets the number typed.
+    var typedNumber = (/^\s*(\d+[A-Za-z]?(?:-\d+)?)\s/.exec(text) || [])[1] || '';
+    return fetchJson(PHOTON + encodeURIComponent(text)).then(function (j) {
+      var seen = {};
+      return ((j && j.features) || []).map(function (f) {
+        var p = f.properties || {}, country = String(p.countrycode || '').toUpperCase();
+        if (country !== 'US' && country !== 'CA') return null;
+        var streetName = p.street || (p.type === 'street' ? p.name : '');
+        if (!streetName) return null;
+        var street = [p.housenumber || typedNumber, streetName].filter(Boolean).join(' ');
+        var city = p.city || p.locality || p.district || '', state = regionCode(p.state);
+        var zip = country === 'CA' ? fixPostal(p.postcode) : String(p.postcode || '');
+        var sub = [city, [state, zip].filter(Boolean).join(' ')].filter(Boolean).join(', ') + (country === 'CA' ? ', Canada' : '');
+        var id = (street + '|' + sub).toLowerCase();
+        if (seen[id]) return null;
+        seen[id] = true;
+        return { label: street, sub: sub, street: street, city: city, state: state, zip: zip, country: country, source: 'photon' };
+      }).filter(Boolean).slice(0, 5);
     });
   }
 
@@ -431,7 +479,7 @@
     parseDelimited: parseDelimited, readXlsx: readXlsx, parseVCard: parseVCard,
     headerMap: headerMap, rowsToAddresses: rowsToAddresses, addressLines: addressLines, fixZip: fixZip, linesToFields: linesToFields,
     fontCss: fontCss, textHeight: textHeight, fits: fits, fitScale: fitScale, findLabelBorder: findLabelBorder,
-    unwrapTable: unwrapTable, countryOf: countryOf, fixPostal: fixPostal, lookupPostal: lookupPostal, suggestAddresses: suggestAddresses,
+    unwrapTable: unwrapTable, countryOf: countryOf, fixPostal: fixPostal, regionCode: regionCode, lookupPostal: lookupPostal, suggestAddresses: suggestAddresses,
     FIELDS: FIELDS, PROVINCES: PROVINCES
   };
   root.LSK_TOOLS = api;
