@@ -59,7 +59,7 @@ a{color:var(--accent)}
 .row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
 .row.links{gap:4px 16px}
 input[type=number]{width:60px;font:inherit;padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);min-height:28px}
-input[type=text],select{width:100%;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);min-height:30px}
+input[type=text],input[type=url],select{width:100%;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);min-height:30px}
 textarea{display:block;width:100%;font:13px/1.4 var(--f);padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);resize:vertical}
 .fl{display:block;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .check{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;cursor:pointer}
@@ -67,7 +67,7 @@ textarea{display:block;width:100%;font:13px/1.4 var(--f);padding:7px 9px;border:
 .seg{display:inline-flex;justify-self:start;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--surface)}
 .seg button{border:0;background:transparent;color:var(--ink);font:500 12.5px var(--f);padding:6px 12px;cursor:pointer;min-height:30px}
 .seg button+button{border-left:1px solid var(--line)}
-.seg button[aria-pressed="true"],.seg button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+.seg button[aria-pressed="true"],.seg button[aria-selected="true"],.seg button[aria-checked="true"]{background:var(--accent);color:var(--accent-ink)}
 .seg.tabs{display:flex;justify-self:stretch}
 .seg.tabs button{flex:1}
 
@@ -198,3 +198,13 @@ textarea{display:block;width:100%;font:13px/1.4 var(--f);padding:7px 9px;border:
 .say:empty{display:none}
 .say.warn{color:var(--warn)}
 select.fit{width:auto}
+
+/* Version 1.5: waiting labels, numbers and codes, backups */
+.waiting{display:grid;gap:6px;padding-top:8px;border-top:1px solid var(--line)}
+ol.book-list{counter-reset:wait}
+ol.book-list li span::before{counter-increment:wait;content:counter(wait) ". ";color:var(--muted);font-family:var(--f-mono);font-size:11.5px}
+#pane-codes .fit-label{width:132px}
+#pane-codes .seg{justify-self:stretch;display:flex}
+#pane-codes .seg button{flex:1;padding:6px 8px}
+.plain-list{margin:0;padding-left:18px;display:grid;gap:3px;font-size:12.5px}
+.done-note{margin:0;padding:8px 10px;border-radius:8px;background:var(--accent-soft);border:1px solid var(--accent);font-size:12.5px}

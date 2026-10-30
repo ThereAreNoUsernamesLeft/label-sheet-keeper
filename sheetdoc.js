@@ -142,7 +142,8 @@
     x.push('<w:tbl><w:tblPr>');
     x.push('<w:tblW w:w="' + L.tableW + '" w:type="dxa"/>');
     x.push('<w:tblInd w:w="' + L.indent + '" w:type="dxa"/>');
-    var b = opts.outline ? 'w:val="single" w:sz="4" w:space="0" w:color="999999"' : 'w:val="nil"';
+    // Dark, thin lines: easy to see against a light, and to find on a scan.
+    var b = opts.outline ? 'w:val="single" w:sz="6" w:space="0" w:color="000000"' : 'w:val="nil"';
     x.push('<w:tblBorders><w:top ' + b + '/><w:left ' + b + '/><w:bottom ' + b + '/><w:right ' + b + '/><w:insideH ' + b + '/><w:insideV ' + b + '/></w:tblBorders>');
     x.push('<w:tblLayout w:type="fixed"/>');
     // Side padding only. Word for Mac can add top/bottom cell padding on top of
@@ -382,11 +383,70 @@
     return zip.generateAsync({ type: opts.type || 'base64', compression: 'DEFLATE' });
   }
 
+  // ---------- backup of the panel's settings ----------
+  // A plain Word document that carries the settings (base64 JSON) in a custom
+  // XML part. Opened in Word, its panel offers to restore them.
+  // opts: { data (base64), lines: [text], addinRef, type }
+  var BACKUP_NS = 'urn:lsk:backup', BACKUP_PROP = 'LabelSheetBackup';
+  function backupDocumentXml(lines) {
+    var p = function (t, size, b, after) {
+      return '<w:p><w:pPr><w:spacing w:before="0" w:after="' + (after || 120) + '"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>' +
+        (b ? '<w:b/>' : '') + '<w:sz w:val="' + size * 2 + '"/><w:szCs w:val="' + size * 2 + '"/></w:rPr><w:t xml:space="preserve">' + esc(t) + '</w:t></w:r></w:p>';
+    };
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ' + NS + '><w:body>' +
+      p('Label Sheet Keeper backup', 20, true, 240) + lines.map(function (t) { return p(t, 11, false); }).join('') +
+      '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>' +
+      '</w:body></w:document>';
+  }
+  function buildBackupDocx(JSZipLib, opts) {
+    var Z = JSZipLib || root.JSZip;
+    if (!Z) return Promise.reject(new Error('The file builder didn’t load. Close and reopen the panel.'));
+    var we = opts.addinRef && opts.addinRef.id;
+    var zip = new Z();
+    zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+      '<Override PartName="/customXml/itemProps1.xml" ContentType="application/vnd.openxmlformats-officedocument.customXmlProperties+xml"/>' +
+      '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
+      '<Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/>' +
+      (we ? '<Override PartName="/word/webextensions/taskpanes.xml" ContentType="application/vnd.ms-office.webextensiontaskpanes+xml"/>' +
+        '<Override PartName="/word/webextensions/webextension1.xml" ContentType="application/vnd.ms-office.webextension+xml"/>' : '') +
+      '</Types>');
+    zip.file('_rels/.rels', rootRels(we));
+    if (we) {
+      zip.file('word/webextensions/taskpanes.xml', TASKPANES);
+      zip.file('word/webextensions/_rels/taskpanes.xml.rels', TASKPANES_RELS);
+      zip.file('word/webextensions/webextension1.xml', webExtensionXml(opts.addinRef));
+    }
+    zip.file('docProps/core.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/">' +
+      '<dc:title>Label Sheet Keeper backup</dc:title><dc:creator>Label Sheet Keeper</dc:creator></cp:coreProperties>');
+    zip.file('docProps/custom.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">' +
+      '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="2" name="' + BACKUP_PROP + '"><vt:lpwstr>1</vt:lpwstr></property></Properties>');
+    zip.file('word/document.xml', backupDocumentXml(opts.lines || []));
+    zip.file('word/_rels/document.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml" Target="../customXml/item1.xml"/>' +
+      '</Relationships>');
+    zip.file('customXml/item1.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><lskBackup xmlns="' + BACKUP_NS + '" v="1">' + opts.data + '</lskBackup>');
+    zip.file('customXml/itemProps1.xml', '<?xml version="1.0" encoding="UTF-8" standalone="no"?>' +
+      '<ds:datastoreItem ds:itemID="{6B1A4C2E-0F5D-4E8B-9C3A-2D7E1F0B5A94}" xmlns:ds="http://schemas.openxmlformats.org/officeDocument/2006/customXml"><ds:schemaRefs/></ds:datastoreItem>');
+    zip.file('customXml/_rels/item1.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXmlProps" Target="itemProps1.xml"/>' +
+      '</Relationships>');
+    return zip.generateAsync({ type: opts.type || 'base64', compression: 'DEFLATE' });
+  }
+
   var api = {
     PROP: PROP, LAYOUT_PROP: LAYOUT_PROP, SPEC_PROP: SPEC_PROP, SPACER_TAG: SPACER_TAG, WE_NS: WE_NS,
     ARROW_TEXT: ARROW_TEXT, ARROW_BEFORE_PT: ARROW_BEFORE_PT, ARROW_SIZE_PT: ARROW_SIZE_PT, STRIP_MARGIN: STRIP_MARGIN,
     hasStrip: hasStrip, layout: layout, count: count, cellOf: cellOf, labelAt: labelAt, tableShape: tableShape,
-    buildDocx: buildDocx, documentXml: documentXml, tablePackage: tablePackage, paraXml: paraXml, specOf: specOf
+    buildDocx: buildDocx, documentXml: documentXml, tablePackage: tablePackage, paraXml: paraXml, specOf: specOf,
+    buildBackupDocx: buildBackupDocx, BACKUP_NS: BACKUP_NS, BACKUP_PROP: BACKUP_PROP
   };
   root.LSK_SHEET = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

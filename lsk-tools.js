@@ -438,6 +438,140 @@
     });
   }
 
+  // ---------- reordering labels ----------
+  // A store link -> where the Reorder button goes. Amazon and Walmart links
+  // can put the labels straight in the cart; other stores open the product
+  // page. Resolves nothing; returns { url, cart, store } or null for a bad link.
+  function reorderLink(link, packs) {
+    var u;
+    try { u = new URL(String(link || '').trim()); } catch (e) { return null; }
+    if (!/^https?:$/.test(u.protocol)) return null;
+    packs = Math.max(1, Math.min(99, Math.round(Number(packs) || 1)));
+    var host = u.hostname.toLowerCase().replace(/^www\./, ''), m;
+    if (/^(smile\.)?amazon\.(com|ca|co\.uk|de|fr|it|es|nl|se|pl|com\.mx|com\.au|co\.jp|in|sg|ae|sa|com\.br|com\.tr|com\.be)$/.test(host)) {
+      m = /\/(?:dp|gp\/product|gp\/aw\/d|exec\/obidos\/asin|o\/asin)\/([A-Z0-9]{10})(?:[/?]|$)/i.exec(u.pathname + '/');
+      if (m) return { url: 'https://www.' + host.replace(/^smile\./, '') + '/gp/aws/cart/add.html?ASIN.1=' + m[1].toUpperCase() + '&Quantity.1=' + packs, cart: true, store: 'Amazon' };
+      return { url: u.href, cart: false, store: 'Amazon' };
+    }
+    if (host === 'walmart.com') {
+      m = /\/ip\/(?:[^/]+\/)?(\d{5,})(?:[/?]|$)/.exec(u.pathname + '/');
+      if (m) return { url: 'https://www.walmart.com/sc/cart/addToCart?items=' + m[1] + (packs > 1 ? encodeURIComponent('|' + packs) : ''), cart: true, store: 'Walmart' };
+      return { url: u.href, cart: false, store: 'Walmart' };
+    }
+    var names = { 'staples.com': 'Staples', 'staples.ca': 'Staples', 'officedepot.com': 'Office Depot', 'target.com': 'Target', 'avery.com': 'Avery', 'avery.ca': 'Avery', 'costco.com': 'Costco', 'costco.ca': 'Costco', 'bestbuy.com': 'Best Buy', 'samsclub.com': 'Sam’s Club', 'bjs.com': 'BJ’s', 'uline.com': 'Uline' };
+    return { url: u.href, cart: false, store: names[host] || host };
+  }
+
+  // ---------- numbers, QR codes and barcodes ----------
+  // "Box {n} of {total}" -> "Box 3 of 12". pad: digits for {n}.
+  function numberText(pattern, n, totalN, pad) {
+    var num = String(n);
+    if (pad > num.length) num = new Array(pad - num.length + 1).join('0') + num;
+    return String(pattern || '{n}').replace(/\{n\}/gi, num).replace(/\{total\}/gi, String(totalN));
+  }
+  // QR code modules (true = dark) using qrcode-generator (MIT, Kazuhiko Arase),
+  // loaded separately as the global "qrcode". Error correction M; UTF-8.
+  function qrMatrix(text) {
+    var lib = root.qrcode;
+    if (!lib) throw new Error('The QR code maker didn’t load.');
+    lib.stringToBytes = lib.stringToBytesFuncs['UTF-8'];
+    var q = lib(0, 'M');
+    q.addData(String(text), 'Byte');
+    q.make();
+    var n = q.getModuleCount(), rows = [];
+    for (var r = 0; r < n; r++) { var row = []; for (var c = 0; c < n; c++) row.push(q.isDark(r, c)); rows.push(row); }
+    return rows;
+  }
+  // Code 128 bar patterns (1 = bar, 0 = space), the same table JsBarcode
+  // (MIT) uses. Index 103-105 are the start codes, 106 the stop.
+  var C128 = [
+    '11011001100', '11001101100', '11001100110', '10010011000', '10010001100', '10001001100', '10011001000', '10011000100', '10001100100', '11001001000',
+    '11001000100', '11000100100', '10110011100', '10011011100', '10011001110', '10111001100', '10011101100', '10011100110', '11001110010', '11001011100',
+    '11001001110', '11011100100', '11001110100', '11101101110', '11101001100', '11100101100', '11100100110', '11101100100', '11100110100', '11100110010',
+    '11011011000', '11011000110', '11000110110', '10100011000', '10001011000', '10001000110', '10110001000', '10001101000', '10001100010', '11010001000',
+    '11000101000', '11000100010', '10110111000', '10110001110', '10001101110', '10111011000', '10111000110', '10001110110', '11101110110', '11010001110',
+    '11000101110', '11011101000', '11011100010', '11011101110', '11101011000', '11101000110', '11100010110', '11101101000', '11101100010', '11100011010',
+    '11101111010', '11001000010', '11110001010', '10100110000', '10100001100', '10010110000', '10010000110', '10000101100', '10000100110', '10110010000',
+    '10110000100', '10011010000', '10011000010', '10000110100', '10000110010', '11000010010', '11001010000', '11110111010', '11000010100', '10001111010',
+    '10100111100', '10010111100', '10010011110', '10111100100', '10011110100', '10011110010', '11110100100', '11110010100', '11110010010', '11011011110',
+    '11011110110', '11110110110', '10101111000', '10100011110', '10001011110', '10111101000', '10111100010', '11110101000', '11110100010', '10111011110',
+    '10111101110', '11101011110', '11110101110', '11010000100', '11010010000', '11010011100', '1100011101011'
+  ];
+  // Text -> the barcode's modules as a string of 1s and 0s, or null if the
+  // text has characters Code 128 can't hold. All-digit text of even length
+  // uses code set C (half as wide); anything else uses set B.
+  function code128(text) {
+    text = String(text);
+    if (!text) return null;
+    var vals = [], start;
+    if (/^\d+$/.test(text) && text.length % 2 === 0) {
+      start = 105;
+      for (var i = 0; i < text.length; i += 2) vals.push(Number(text.substr(i, 2)));
+    } else {
+      start = 104;
+      for (var j = 0; j < text.length; j++) {
+        var c = text.charCodeAt(j);
+        if (c < 32 || c > 126) return null;
+        vals.push(c - 32);
+      }
+    }
+    var sum = start;
+    vals.forEach(function (v, k) { sum += v * (k + 1); });
+    return C128[start] + vals.map(function (v) { return C128[v]; }).join('') + C128[sum % 103] + C128[106];
+  }
+
+  // ---------- measuring a scanned test page ----------
+  // The outline of the label grid on a scan of the test page: the centers of
+  // its outermost long lines, in pixels. gray: one byte per pixel.
+  function findGrid(gray, w, h) {
+    var rows = new Float32Array(h), cols = new Float32Array(w);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        if (gray[y * w + x] < 160) { rows[y]++; cols[x]++; }
+      }
+    }
+    // The first (or last) thin dark line. Runs that touch the edge of the
+    // scan or are thick (the scanner lid's shadow, a dark border) are skipped.
+    var line = function (counts, len, fromEnd) {
+      var n = counts.length, maxRun = Math.max(3, n * 0.012), i = fromEnd ? n - 1 : 0, step = fromEnd ? -1 : 1;
+      while (i >= 0 && i < n) {
+        if (counts[i] / len > 0.35) {
+          var a = i, b = i;
+          while (b + step >= 0 && b + step < n && counts[b + step] / len > 0.35) b += step;
+          var lo = Math.min(a, b), hi = Math.max(a, b);
+          if (lo > 0 && hi < n - 1 && hi - lo + 1 <= maxRun) return (lo + hi) / 2;
+          i = b + step;
+          continue;
+        }
+        i += step;
+      }
+      return -1;
+    };
+    var top = line(rows, w, false), bottom = line(rows, w, true), left = line(cols, h, false), right = line(cols, h, true);
+    if (top < 0 || left < 0 || bottom <= top || right <= left) return null;
+    return { left: left, top: top, right: right, bottom: bottom };
+  }
+  // From the grid found on a scan (in pixels) -> the printer adjustment.
+  // f: the label size; nudge: the adjustment the test page was made with.
+  // Returns { nudge, error, widthRatio } in inches, or { problem } text.
+  function alignFromScan(grid, imgW, imgH, f, nudge) {
+    nudge = nudge || { x: 0, y: 0 };
+    var pageW = f.page.width, pageH = f.page.height;
+    if (Math.abs(imgH / imgW - pageH / pageW) > 0.04) return { problem: 'The scan isn’t the shape of a whole ' + pageW + ' × ' + pageH + ' in page. Scan the whole page at ' + (pageW === 8.5 && pageH === 11 ? 'Letter' : 'full-page') + ' size.' };
+    var ppi = imgW / pageW;
+    var expW = (f.across - 1) * f.pitch.across + f.label.width;
+    var gotW = (grid.right - grid.left) / ppi, ratio = gotW / expW;
+    if (Math.abs(ratio - 1) > 0.03) {
+      return { problem: ratio < 0.85 || ratio > 1.15 ? 'This doesn’t look like the test page for this size. Make a test page from this panel, print it, and scan that.'
+        : 'The test page printed ' + Math.round(ratio * 100) + '% of full size. Print it again at 100% scale (turn off “Scale to fit” in the print settings), then scan it.' };
+    }
+    var ex = f.firstLabel.left + nudge.x, ey = f.firstLabel.top + nudge.y;
+    var err = { x: grid.left / ppi - ex, y: grid.top / ppi - ey };
+    if (Math.abs(err.x) > 0.5 || Math.abs(err.y) > 0.5) return { problem: 'The labels on the scan are more than half an inch from where they should be. Check that the page was scanned right side up, against the corner of the glass.' };
+    var round = function (v) { return Math.round(v * 100) / 100 || 0; };
+    return { nudge: { x: round(nudge.x - err.x), y: round(nudge.y - err.y) }, error: { x: round(err.x), y: round(err.y) }, widthRatio: ratio };
+  }
+
   // Label content (a flat OOXML package) that is nothing but a table, as
   // version 1.3's Copy left behind: replace the table with the content of its
   // non-empty cells. Anything else comes back unchanged.
@@ -480,6 +614,7 @@
     headerMap: headerMap, rowsToAddresses: rowsToAddresses, addressLines: addressLines, fixZip: fixZip, linesToFields: linesToFields,
     fontCss: fontCss, textHeight: textHeight, fits: fits, fitScale: fitScale, findLabelBorder: findLabelBorder,
     unwrapTable: unwrapTable, countryOf: countryOf, fixPostal: fixPostal, regionCode: regionCode, lookupPostal: lookupPostal, suggestAddresses: suggestAddresses,
+    reorderLink: reorderLink, numberText: numberText, qrMatrix: qrMatrix, code128: code128, findGrid: findGrid, alignFromScan: alignFromScan,
     FIELDS: FIELDS, PROVINCES: PROVINCES
   };
   root.LSK_TOOLS = api;

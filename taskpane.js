@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.4.1';
+  var VERSION = '1.5';
   var ADDIN_ID = '8d491c85-a76d-4d26-a6f5-b7b2dd4a1711';   // must match manifest.xml <Id>
   var F = window.LSK_FORMATS;
   var S = window.LSK_SHEET;
@@ -33,7 +33,8 @@
     addinRef: 'lsk.addinRef', feedArrow: 'lsk.feedArrow', tripLimit: 'lsk.tripLimit', nudge: 'lsk.nudge.', testCheck: 'lsk.testCheck.',
     warnPass: 'lsk.warnPassHidden', last: 'lsk.last.', book: 'lsk.addressBook', design: 'lsk.design', logo: 'lsk.logo',
     custom: 'lsk.customFormats', sheets: 'lsk.sheets', tableInfo: 'lsk.tableInfo', tableDraft: 'lsk.tableDraft',
-    home: 'lsk.homeCountry', geoKey: 'lsk.geoKey', suggest: 'lsk.suggest'
+    home: 'lsk.homeCountry', geoKey: 'lsk.geoKey', suggest: 'lsk.suggest',
+    stock: 'lsk.stock.', fillJob: 'lsk.fillJob', testNudge: 'lsk.testNudge.', codes: 'lsk.codes'
   };
   var USED_TAG = 'lsk-used';
 
@@ -44,6 +45,7 @@
   var st = { kind: 'loading', fmt: null, used: {}, ready: {}, texts: {}, pics: {}, over: {}, here: 0, header: null, margins: null, applied: null };
   var undo = null;            // last print marked used: { nums, cells: [{n, ooxml}], at, trips }
   var pendingConfirm = null;  // action for the confirm bar's main button
+  var pendingAlt = null;      // action for its second button, when there is one
   var choosing = false;       // size chooser opened from a sheet
   var chosenId = F.formats.length ? F.formats[0].id : '';
   var chain = Promise.resolve();
@@ -141,6 +143,25 @@
   function spots() { var s = getSetting(DOC.spots); return s && typeof s === 'object' ? s : {}; }
   function history() { var h = getSetting(DOC.history); return Array.isArray(h) ? h : []; }
 
+  // Label stock, per size: { on: sheets on hand, pack: sheets per pack,
+  // warn: remind at this many, link: where to buy, packs: packs to order }.
+  // A sheet comes off the count on its first trip through the printer.
+  function stockFor(id) { var s = storeJson(LS.stock + id); return s && typeof s.on === 'number' ? s : null; }
+  function stockLow(s) { return !!s && s.on <= (s.warn || 0); }
+  function takeFromStock(f) {
+    var s = stockFor(f.id);
+    if (!s) return false;
+    s.on = Math.max(0, s.on - 1);
+    storeJson(LS.stock + f.id, s);
+    return true;
+  }
+  function putBackInStock(f) { var s = stockFor(f.id); if (s) { s.on += 1; storeJson(LS.stock + f.id, s); } }
+  // "Avery 5160 (laser), 8160 (inkjet)" in a size's description -> product numbers.
+  function productNumbers(f) {
+    var d = String((f && f.detail) || ''), l = /(\d{3,5}[A-Z]?) \(laser\)/.exec(d), i = /(\d{3,5}[A-Z]?) \(inkjet\)/.exec(d);
+    return { laser: l ? l[1] : '', inkjet: i ? i[1] : '' };
+  }
+
   // Sideways 2-per-sheet labels can be called "top" and "bottom" once the
   // person says which half of the physical sheet label 1 printed on.
   function sideApplies(f) { return !!f && f.page.width > f.page.height && f.across === 2 && f.down === 1; }
@@ -168,8 +189,12 @@
     box.hidden = false;
     if (window.console) console.error(e, e && e.debugInfo);
   }
-  function ask(msg, yesLabel, action, danger) {
+  // alt: { label, action } for a second choice next to the main button.
+  function ask(msg, yesLabel, action, danger, alt) {
     pendingConfirm = action;
+    pendingAlt = alt ? alt.action : null;
+    $('confirm-alt').hidden = !alt;
+    $('confirm-alt').textContent = alt ? alt.label : '';
     $('confirm-msg').textContent = msg;
     $('confirm-yes').textContent = yesLabel;
     $('confirm-yes').className = 'btn sm ' + (danger ? 'danger' : 'primary');
@@ -178,7 +203,12 @@
     try { $('confirm').scrollIntoView({ block: 'nearest' }); } catch (e) { /* old browser */ }
     $('confirm-no').focus();
   }
-  function closeAsk() { pendingConfirm = null; $('confirm').hidden = true; }
+  function closeAsk() { pendingConfirm = null; pendingAlt = null; $('confirm').hidden = true; }
+  // Web pages open in the Mac's own browser.
+  function openLink(url) {
+    try { if (Office.context.ui && typeof Office.context.ui.openBrowserWindow === 'function') { Office.context.ui.openBrowserWindow(url); return; } } catch (e) { /* fall back */ }
+    try { window.open(url, '_blank', 'noopener'); } catch (e) { /* blocked */ }
+  }
 
   // Word tasks run one at a time. If one fails, the error is shown and the
   // caller's follow-up steps don't run.
@@ -301,7 +331,7 @@
         var meta = {};
         props.items.forEach(function (p) { meta[p.key] = String(p.value); });
         var id = meta[S.PROP];
-        if (!id) return { kind: 'none' };
+        if (!id) return { kind: meta[S.BACKUP_PROP] ? 'backup' : 'none' };
         var fmt = findFormat(id) || formatFromSpec(meta);
         if (!fmt) {
           return { kind: 'broken', fixable: false, reason: 'This sheet uses a label size (“' + id + '”) that isn’t on this Mac anymore. Make a new sheet, or add the size again.' };
@@ -380,6 +410,7 @@
       updateRegistry();
       syncHeader();
       tidyEdges();
+      setTimeout(checkFillJob, 300);
     } else if (s.kind !== 'broken') st.fmt = null;
     render();
   }
@@ -675,7 +706,7 @@
 
   // Mark every ready-to-print label used: one more trip for the sheet.
   function markPrinted() {
-    var nums = keys(st.ready);
+    var nums = keys(st.ready), firstTrip = trips() === 0;
     return Word.run(function (ctx) {
       var gets = nums.map(function (n) { return grabContent(cellBody(ctx, n)); });
       return ctx.sync().then(function () {
@@ -689,6 +720,7 @@
       h.unshift({ at: at, nums: nums, text: texts.length ? texts[0] + (texts.length > 1 ? ' and ' + plural(texts.length - 1, 'other') : '') : '' });
       setSetting(DOC.history, h.slice(0, 200));
       setSetting(DOC.trips, trips() + 1);
+      undo.stock = firstTrip && takeFromStock(st.fmt);
       setSpots(nums, function (n) { return { at: at, t: firstLine(st.texts[n]) }; });
       // Keep the last label for "Reprint last label".
       var last = undo.cells[undo.cells.length - 1];
@@ -708,6 +740,7 @@
       var h = history();
       if (h.length && h[0].at === u.at) { h.shift(); setSetting(DOC.history, h); }
       setSetting(DOC.trips, Math.max(0, trips() - 1));
+      if (u.stock) putBackInStock(st.fmt);
       setSpots(u.nums, null);
       undo = null;
     });
@@ -748,8 +781,85 @@
     }
     return out;
   }
+  // ---------- filling your other sheets first ----------
+  // When there's more to print than this sheet holds, labels can go on your
+  // other part-used sheets of the same size before any new sheet is made.
+  // The list waits on this Mac; each sheet's panel fills its open labels,
+  // then opens the next sheet. What's left at the end goes on new sheets.
+  // job: { id, fmtId, at, items: [paras per label], sheets: [ids], next, done: [ids] }
+  var JOB_LIFE = 30 * 60000;
+  function partSheets(f) {
+    var lim = tripLimit();
+    return sheetEntries(true).filter(function (e) { return e.fmtId === f.id && e.open > 0 && (e.trips || 0) < lim && e.url; })
+      .sort(function (a, b) { return b.open - a.open; });
+  }
+  function roomOn(list) { return list.reduce(function (a, e) { return a + e.open; }, 0); }
+  function startFillJob(f, items, others) {
+    var job = { id: uid(), fmtId: f.id, at: Date.now(), items: items, sheets: others.map(function (e) { return e.id; }), next: others[0].id, done: [getSetting(DOC.id)] };
+    storeJson(LS.fillJob, job);
+    openSheetFile(others[0]);
+    return others[0];
+  }
+  var jobRunning = false;
+  function checkFillJob() {
+    if (jobRunning || busy || st.kind !== 'sheet') return;
+    var job = storeJson(LS.fillJob);
+    if (!job || !Array.isArray(job.items)) return;
+    if (Date.now() - job.at > JOB_LIFE) { storeJson(LS.fillJob, null); return; }
+    var me = getSetting(DOC.id), f = st.fmt;
+    if (!me || job.next !== me || job.fmtId !== f.id) return;
+    jobRunning = true;
+    var open = openList(), take = job.items.slice(0, open.length), rest = job.items.slice(take.length);
+    var items = take.map(function (paras, i) { return { n: open[i], paras: paras }; }), nums = items.map(function (it) { return it.n; });
+    job.done = (job.done || []).concat([me]);
+    var reg = registry(), lim = tripLimit();
+    var nextId = rest.length ? job.sheets.filter(function (id) {
+      var e = reg[id]; return job.done.indexOf(id) < 0 && e && e.url && e.open > 0 && (e.trips || 0) < lim;
+    })[0] : null;
+    // Claim these labels before writing, so no other panel fills them too.
+    if (nextId) { job.items = rest; job.next = nextId; job.at = Date.now(); storeJson(LS.fillJob, job); } else storeJson(LS.fillJob, null);
+    var here = nums.length ? 'Filled ' + labelList(nums) + ' with labels from your list' : 'This sheet had no open labels left';
+    var fill = items.length ? queueChange(function () { return writeEach(items); }).then(refresh) : Promise.resolve();
+    fill.then(function () {
+      if (!rest.length) { say(here + '. That was the last of them.'); return null; }
+      if (nextId) { say(here + '. Opening “' + (reg[nextId].file || 'your next sheet') + '” for the other ' + plural(rest.length, 'label') + '.'); openSheetFile(reg[nextId]); return null; }
+      var sheets = Math.ceil(rest.length / total());
+      return queue(function () { return createSheets(f, spillPrefills(f, rest)); }).then(function () {
+        say(here + '. Made ' + plural(sheets, 'new sheet') + ' for the other ' + plural(rest.length, 'label') + '. ' + (sheets === 1 ? 'It opened in its own window.' : 'They opened in their own windows.'));
+      });
+    }).then(function () { jobRunning = false; });
+  }
+  // The question to ask when labels don't all fit on this sheet.
+  // here: labels going on this sheet; extra: [paras] for the rest; what: 'address', 'copy';
+  // spots: the rest in their table positions (null = leave that label open), for new sheets.
+  function askOverflow(f, here, extra, what, fillHere, done, spots) {
+    var count = extra.length, noun = what === 'copy' ? plural(count, 'copy', 'ies').replace('copyies', 'copies') : plural(count, 'address', 'es');
+    spots = spots || extra;
+    var others = partSheets(f), room = roomOn(others), sheets = Math.ceil(spots.length / total());
+    var hereNoun = what === 'copy' ? plural(here, 'copy', 'ies').replace('copyies', 'copies') : plural(here, 'address', 'es');
+    var lead = here ? hereNoun + (here === 1 ? ' goes' : ' go') + ' on this sheet. ' : 'This sheet has no open labels. ';
+    var makeNew = function () {
+      fillHere().then(function () { return queue(function () { return createSheets(f, spillPrefills(f, spots)); }); }).then(function () {
+        done('made ' + plural(sheets, 'new sheet') + ' for the other ' + noun + '. ' + (sheets === 1 ? 'It opened in its own window.' : 'They opened in their own windows.'));
+      });
+    };
+    if (!others.length) {
+      ask(lead + 'Put the other ' + noun + ' on ' + plural(sheets, 'new sheet') + '? ' + (sheets === 1 ? 'It opens in its own window.' : 'Each opens in its own window.'), (here ? 'Fill and make ' : 'Make ') + plural(sheets, 'sheet'), makeNew);
+      return;
+    }
+    var which = others.length === 1 ? 'Your other sheet of this size has ' : 'Your other ' + others.length + ' sheets of this size have ';
+    ask(lead + which + plural(room, 'open label') + '. Put the other ' + noun + ' there first' + (room < count ? ', and the rest on new sheets' : '') + '?',
+      'Fill my other sheets first', function () {
+        fillHere().then(function () {
+          var first = startFillJob(f, extra, others);
+          done('opening “' + (first.file || 'your other sheet') + '” for the other ' + noun + '. Its panel fills them. If the panel doesn’t open there, click Label Sheet on its Home tab.');
+        });
+      }, false, { label: 'Make new sheets', action: makeNew });
+  }
+
   function makeTestPage(f) {
-    return createDoc(f, { test: true, nudge: nudgeFor(f.id) }).then(function () { store(LS.testCheck + f.id, 'pending'); });
+    var nudge = nudgeFor(f.id);
+    return createDoc(f, { test: true, nudge: nudge }).then(function () { store(LS.testCheck + f.id, 'pending'); storeJson(LS.testNudge + f.id, nudge); });
   }
 
   // ---------- repair / rebuild in place ----------
@@ -859,6 +969,7 @@
     });
   }
   function checkPrinted() {
+    checkFillJob();
     if (busy || st.kind !== 'sheet') return;
     readPrintTime().then(function (ms) {
       if (lastPrintSeen === null) {
@@ -903,7 +1014,7 @@
 
   // ---------- shipping label files ----------
   var DPI = 300;
-  var ship = { doc: null, page: 1, pages: 1, src: null, crop: null, turn: 0, found: false };
+  var ship = { doc: null, page: 1, pages: 1, src: null, crop: null, turn: 0, found: false, name: '', waiting: [] };
 
   // Usable area inside one label, in inches.
   function contentBox(f) {
@@ -929,50 +1040,170 @@
     say((e && e.userMessage) || 'That file couldn’t be opened. Try a PDF, PNG, or JPEG.', 'warn');
     if (window.console && e && !e.userMessage) console.error(e);
   }
-  function handleFile(file) {
-    if (!file) return;
-    say('Opening ' + (file.name || 'the picture') + '…');
-    var isPdf = /pdf$/i.test(file.type || '') || /\.pdf$/i.test(file.name || '');
-    var reader = new FileReader();
-    reader.onerror = function () { fileError(); };
-    if (isPdf) {
-      reader.onload = function () {
-        loadPdfLib().then(function (lib) {
-          return lib.getDocument({ data: new Uint8Array(reader.result), standardFontDataUrl: 'vendor/pdfjs/standard_fonts/', isEvalSupported: false }).promise;
-        }).then(function (doc) {
-          ship.doc = doc; ship.pages = doc.numPages; ship.page = 1;
-          return renderPdfPage();
-        }).then(afterSource).catch(fileError);
-      };
-      reader.readAsArrayBuffer(file);
-    } else {
-      reader.onload = function () {
-        var img = new Image();
-        img.onload = function () {
-          var c = document.createElement('canvas');
-          c.width = img.naturalWidth; c.height = img.naturalHeight;
-          var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0);
-          ship.doc = null; ship.pages = 1; ship.page = 1; ship.src = c;
-          afterSource();
-        };
-        img.onerror = function () { fileError(userError('That picture couldn’t be opened. Try a PDF, PNG, or JPEG.')); };
-        img.src = reader.result;
-      };
-      reader.readAsDataURL(file);
-    }
+  // Reading files: a PDF page or a picture -> a canvas.
+  function readFileAs(file, how) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(r.result); };
+      r.onerror = function () { reject(userError('That file couldn’t be read.')); };
+      if (how === 'buffer') r.readAsArrayBuffer(file); else r.readAsDataURL(file);
+    });
   }
-  function renderPdfPage() {
-    return ship.doc.getPage(ship.page).then(function (page) {
+  function isPdfFile(file) { return /pdf$/i.test(file.type || '') || /\.pdf$/i.test(file.name || ''); }
+  function openPdf(file) {
+    return Promise.all([readFileAs(file, 'buffer'), loadPdfLib()]).then(function (a) {
+      return a[1].getDocument({ data: new Uint8Array(a[0]), standardFontDataUrl: 'vendor/pdfjs/standard_fonts/', isEvalSupported: false }).promise;
+    });
+  }
+  function pdfPageCanvas(doc, n, dpi) {
+    return doc.getPage(n).then(function (page) {
       var one = page.getViewport({ scale: 1 });
-      var scale = DPI / 72, maxPx = 14e6;
+      var scale = dpi / 72, maxPx = 14e6;
       if (one.width * one.height * scale * scale > maxPx) scale = Math.sqrt(maxPx / (one.width * one.height));
       var vp = page.getViewport({ scale: scale });
       var c = document.createElement('canvas');
       c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
       var ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
-      return page.render({ canvasContext: ctx, viewport: vp }).promise.then(function () { ship.src = c; });
+      return page.render({ canvasContext: ctx, viewport: vp }).promise.then(function () { return c; });
     });
   }
+  function imageCanvas(file, maxW) {
+    return readFileAs(file, 'url').then(function (url) {
+      return new Promise(function (resolve, reject) {
+        var img = new Image();
+        img.onload = function () {
+          var k = maxW && img.naturalWidth > maxW ? maxW / img.naturalWidth : 1;
+          var c = document.createElement('canvas');
+          c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+          var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+          resolve(c);
+        };
+        img.onerror = function () { reject(userError('That picture couldn’t be opened. Try a PDF, PNG, or JPEG.')); };
+        img.src = url;
+      });
+    });
+  }
+
+  function handleFile(file) {
+    if (!file) return;
+    say('Opening ' + (file.name || 'the picture') + '…');
+    ship.name = file.name || 'Pasted picture';
+    if (isPdfFile(file)) {
+      openPdf(file).then(function (doc) {
+        ship.doc = doc; ship.pages = doc.numPages; ship.page = 1;
+        return renderPdfPage();
+      }).then(afterSource).catch(fileError);
+    } else {
+      imageCanvas(file).then(function (c) {
+        ship.doc = null; ship.pages = 1; ship.page = 1; ship.src = c;
+        afterSource();
+      }).catch(fileError);
+    }
+  }
+  function renderPdfPage() { return pdfPageCanvas(ship.doc, ship.page, DPI).then(function (c) { ship.src = c; }); }
+
+  // ---------- several labels at once ----------
+  // Labels waiting to go on the sheet, in order: { name, b64, w, h (points), found }.
+  function handleFiles(list) {
+    var files = Array.prototype.slice.call(list || []).filter(Boolean);
+    if (files.length === 1) { handleFile(files[0]); return; }
+    if (!files.length) return;
+    say('Reading ' + plural(files.length, 'file') + '…');
+    var added = 0, guessed = [], failed = [];
+    files.reduce(function (p, file) {
+      return p.then(function () {
+        return labelFromFile(file).then(function (item) {
+          ship.waiting.push(item); added++;
+          if (!item.found) guessed.push(item.name);
+        }, function () { failed.push(file.name || 'a file'); });
+      });
+    }, Promise.resolve()).then(function () {
+      setFillTab('file');
+      var msg = 'Added ' + plural(added, 'label') + ' to the waiting list.';
+      if (guessed.length) msg += ' No printed border was found in ' + guessed.join(', ') + ', so the whole page was used; check ' + (guessed.length === 1 ? 'it' : 'them') + ' on the sheet before printing.';
+      if (failed.length) msg += ' Couldn’t open ' + failed.join(', ') + '.';
+      say(msg, guessed.length || failed.length ? 'warn' : '');
+    });
+  }
+  // The first page (of up to four) with a printed label border; otherwise page 1 trimmed.
+  function labelFromFile(file) {
+    var name = file.name || 'Label';
+    if (!isPdfFile(file)) return imageCanvas(file).then(function (c) { var found = findLabel(c); return waitingItem(name, c, found || trimBox(c), !!found); });
+    return openPdf(file).then(function (doc) {
+      var last = Math.min(doc.numPages, 4);
+      var tryPage = function (n) {
+        return pdfPageCanvas(doc, n, DPI).then(function (c) {
+          var found = findLabel(c);
+          if (found) return waitingItem(name, c, found, true);
+          if (n < last) return tryPage(n + 1);
+          return pdfPageCanvas(doc, 1, DPI).then(function (c1) { return waitingItem(name, c1, trimBox(c1), false); });
+        });
+      };
+      return tryPage(1);
+    });
+  }
+  function waitingItem(name, src, crop, found) {
+    var out = outputOf(src, crop, 0);
+    return { name: name, b64: out.canvas.toDataURL('image/png').split(',')[1], w: out.wIn * 72, h: out.hIn * 72, found: found };
+  }
+  // Every page of the open PDF that has a label border.
+  function usePdfPages() {
+    if (!ship.doc) return;
+    var doc = ship.doc, pages = [], n = 0;
+    say('Looking for labels on ' + plural(doc.numPages, 'page') + '…');
+    var next = function () {
+      n++;
+      if (n > doc.numPages) return Promise.resolve();
+      return pdfPageCanvas(doc, n, DPI).then(function (c) {
+        var found = findLabel(c);
+        if (found) { ship.waiting.push(waitingItem(ship.name + ' · page ' + n, c, found, true)); pages.push(n); }
+        return next();
+      });
+    };
+    next().then(function () {
+      renderWaiting();
+      if (!pages.length) { say('No page has a printed label border. Go to the page with the label, drag across it, and put it on the sheet.', 'warn'); return; }
+      say('Added ' + plural(pages.length, 'label') + ' from page' + (pages.length === 1 ? ' ' : 's ') + ranges(pages) + ' to the waiting list.' + (pages.length < doc.numPages ? ' Pages without a label border were skipped.' : ''));
+    }).catch(fileError);
+  }
+  function renderWaiting() {
+    var w = ship.waiting, box = $('waiting'), n = openList().length;
+    box.hidden = !w.length;
+    if (!w.length) return;
+    $('wait-count').textContent = w.length;
+    var ul = $('wait-list'); ul.innerHTML = '';
+    w.forEach(function (it, i) {
+      var li = el('li'), span = el('span', '', it.name + (it.found ? '' : ' (whole page)'));
+      var x = el('button', '', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Remove ' + it.name);
+      x.addEventListener('click', function () { ship.waiting.splice(i, 1); renderWaiting(); });
+      li.appendChild(span); li.appendChild(x); ul.appendChild(li);
+    });
+    var k = Math.min(w.length, n);
+    $('wait-place').textContent = k ? 'Put the next ' + (k === 1 ? 'label' : k) + ' on this sheet' : 'Fresh sheet loaded? Put the next ' + (Math.min(w.length, total()) === 1 ? 'label' : Math.min(w.length, total())) + ' on it';
+  }
+  function placeWaiting() {
+    var open = openList();
+    if (!ship.waiting.length) return;
+    if (!open.length) {
+      if (keys(st.ready).length) { say('Print this sheet first, then click I printed these. After that, load a fresh sheet.', 'warn'); return; }
+      ask('This sheet is used up. Loaded a fresh one? All its labels become open again and the trip count starts over, then the next labels go on.', 'Fresh sheet loaded', function () {
+        var used = keys(st.used);
+        undo = null;
+        queueChange(function () { return markOpen(used).then(function () { setSetting(DOC.trips, 0); setSetting(DOC.spots, {}); }); }).then(refresh).then(placeWaiting);
+      });
+      return;
+    }
+    var take = ship.waiting.slice(0, open.length);
+    var items = take.map(function (it, i) { return { n: open[i], paras: [], pic: { b64: it.b64, w: it.w, h: it.h, align: 'center' } }; });
+    queueChange(function () { return writeEach(items); }).then(refresh).then(function () {
+      ship.waiting = ship.waiting.slice(take.length);
+      renderWaiting();
+      var names = items.map(function (it) { return theName(it.n); });
+      say('Placed ' + plural(take.length, 'label') + ' on ' + names.join(' and ') + '. Print with ⌘P.' +
+        (ship.waiting.length ? ' ' + plural(ship.waiting.length, 'more label') + (ship.waiting.length === 1 ? ' is' : ' are') + ' waiting: after printing, load a fresh sheet and click the button again.' : ''));
+    });
+  }
+
   function afterSource() {
     ship.turn = 0;
     var found = findLabel(ship.src);
@@ -1035,16 +1266,18 @@
     x.drawImage(ship.src, 0, 0, cv.width, cv.height);
     placeBox(ship.crop);
     $('page-nav').hidden = ship.pages < 2;
+    $('pg-all').hidden = ship.pages < 2;
     $('pg-label').textContent = 'Page ' + ship.page + ' of ' + ship.pages;
     $('pg-prev').disabled = ship.page <= 1;
     $('pg-next').disabled = ship.page >= ship.pages;
     drawFit();
   }
   // The chosen area, turned to fit the label best, at up to about 2400 px.
-  function output() {
-    var cr = ship.crop, box = contentBox(st.fmt);
+  function output() { return outputOf(ship.src, ship.crop, ship.turn); }
+  function outputOf(src, cr, turn) {
+    var box = contentBox(st.fmt);
     var straight = Math.min(box.w / cr.w, box.h / cr.h), turned = Math.min(box.w / cr.h, box.h / cr.w);
-    var rot = ((turned > straight * 1.05 ? 90 : 0) + ship.turn) % 360;
+    var rot = ((turned > straight * 1.05 ? 90 : 0) + (turn || 0)) % 360;
     var k = Math.min(1, 2400 / Math.max(cr.w, cr.h));
     var w = Math.round(cr.w * k), h = Math.round(cr.h * k), swap = rot % 180 !== 0;
     var c = document.createElement('canvas');
@@ -1053,7 +1286,7 @@
     x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
     x.translate(c.width / 2, c.height / 2);
     x.rotate(rot * Math.PI / 180);
-    x.drawImage(ship.src, cr.x, cr.y, cr.w, cr.h, -w / 2, -h / 2, w, h);
+    x.drawImage(src, cr.x, cr.y, cr.w, cr.h, -w / 2, -h / 2, w, h);
     var fit = Math.min(box.w / c.width, box.h / c.height);
     return { canvas: c, wIn: c.width * fit, hIn: c.height * fit, box: box };
   }
@@ -1067,6 +1300,48 @@
     var left = (f.padding.left + (box.w - out.wIn) / 2) * pxPerIn;
     var top = (f.align === 'top' ? box.top : (box.rowH - out.hIn) / 2) * pxPerIn;
     x.drawImage(out.canvas, left, top, out.wIn * pxPerIn, out.hIn * pxPerIn);
+  }
+
+  // ---------- lining up from a scanned test page ----------
+  // Scan the printed test page (the whole Letter page, at 100%); the panel
+  // finds the label boxes on it and works out the printer adjustment.
+  var scanResult = null;
+  function scanWorks(f) { return !!f && f.page.height >= f.page.width; }
+  function inches(v) { return Math.abs(v).toFixed(2).replace(/^0/, '') + ' in'; }
+  function handleScan(file) {
+    var f = st.fmt;
+    if (!file || !f) return;
+    if (!scanWorks(f)) { say('Lining up from a scan works for sheets that print upright. For this size, measure how far off the boxes are and type it in Settings.', 'warn'); return; }
+    say('Reading the scan…');
+    scanResult = null; renderScan();
+    var get = isPdfFile(file) ? openPdf(file).then(function (doc) { return pdfPageCanvas(doc, 1, 150); }) : imageCanvas(file, 1700);
+    get.then(function (c) {
+      var w = c.width, h = c.height, d = c.getContext('2d').getImageData(0, 0, w, h).data, gray = new Uint8Array(w * h);
+      for (var i = 0; i < w * h; i++) gray[i] = (d[i * 4] * 299 + d[i * 4 + 1] * 587 + d[i * 4 + 2] * 114) / 1000;
+      var grid = T.findGrid(gray, w, h);
+      if (!grid) { say('No label boxes were found on the scan. Scan the test page made by this panel, the whole page, at 100%.', 'warn'); return; }
+      var made = storeJson(LS.testNudge + f.id) || nudgeFor(f.id);
+      var r = T.alignFromScan(grid, w, h, f, made);
+      if (r.problem) { say(r.problem, 'warn'); return; }
+      scanResult = r;
+      renderScan();
+      try { $('scan-result').scrollIntoView({ block: 'nearest' }); } catch (e) { /* old browser */ }
+      say('');
+    }).catch(fileError);
+  }
+  function renderScan() {
+    var r = scanResult, box = $('scan-result');
+    box.hidden = !r || !st.fmt;
+    if (!r) return;
+    var e = r.error, small = Math.abs(e.x) < 0.02 && Math.abs(e.y) < 0.02;
+    var off = [];
+    if (Math.abs(e.x) >= 0.01) off.push(inches(e.x) + (e.x > 0 ? ' too far right' : ' too far left'));
+    if (Math.abs(e.y) >= 0.01) off.push(inches(e.y) + (e.y > 0 ? ' too low' : ' too high'));
+    $('scan-msg').textContent = small
+      ? 'The test page lines up' + (off.length ? ' within 1/50 inch (' + off.join(', ') + ')' : '') + '. No adjustment needed.'
+      : 'On the scan, the boxes printed ' + off.join(' and ') + '. The new adjustment is: move right ' + r.nudge.x + ' in, move down ' + r.nudge.y + ' in.';
+    $('scan-save').hidden = small;
+    $('scan-done').hidden = !small;
   }
 
   // ---------- addresses ----------
@@ -1127,6 +1402,149 @@
     return paras;
   }
 
+  // ---------- numbers, QR codes and barcodes ----------
+  // Settings for the Numbers tab, kept on this Mac: { text, pad, kind, data, next }
+  var qrLib = null;
+  function loadQrLib() {
+    if (window.qrcode) return Promise.resolve();
+    if (qrLib) return qrLib;
+    qrLib = new Promise(function (resolve, reject) {
+      var sc = document.createElement('script');
+      sc.src = 'vendor/qrcode-generator/qrcode.js?t=' + (window.LSK_T || Date.now());
+      sc.onload = function () { if (window.qrcode) resolve(); else reject(); };
+      sc.onerror = reject;
+      document.head.appendChild(sc);
+    }).catch(function () { qrLib = null; throw userError('The QR code maker didn’t load. Check your internet connection and try again.'); });
+    return qrLib;
+  }
+  function codeSettings() {
+    var c = storeJson(LS.codes) || {};
+    return { text: typeof c.text === 'string' ? c.text : 'Box {n} of {total}', pad: [0, 2, 3, 4].indexOf(c.pad) >= 0 ? c.pad : 0,
+      kind: ['none', 'qr', 'bar'].indexOf(c.kind) >= 0 ? c.kind : 'none', data: c.data || '', next: c.next >= 0 ? c.next : 1 };
+  }
+  function codesFromForm() {
+    var c = codeSettings(), start = Math.round(Number($('num-start').value)), count = Math.round(Number($('num-count').value)), tot = $('num-total').value.trim();
+    return {
+      text: $('num-text').value, pad: Number($('num-pad').value) || 0, kind: c.kind, data: $('code-data').value.trim(),
+      start: start, count: count, total: tot === '' ? start + count - 1 : Math.round(Number(tot))
+    };
+  }
+  // What each label gets: its text and what its code holds.
+  function codeLabel(o, i) {
+    var n = o.start + i;
+    var text = T.numberText(o.text, n, o.total, o.pad).trim();
+    return { n: n, text: text, data: o.kind === 'none' ? '' : (o.data ? T.numberText(o.data, n, o.total, o.pad) : text) };
+  }
+  // The picture for a code, sized for this label size. { canvas, w, h } in points, or { problem }.
+  function codePicture(kind, data, f, captionPt) {
+    var box = textBox(f), roomH = box.height - (captionPt ? captionPt * 1.3 : 0) - 4;
+    if (!data) return { problem: 'Type the text for the code.' };
+    if (kind === 'qr') {
+      var m;
+      try { m = T.qrMatrix(data); } catch (e) { return { problem: 'That’s too much text for a QR code on a label.' }; }
+      var side = Math.min(roomH, box.width * 0.62, 1.4 * 72);
+      if (side < 0.4 * 72) return { problem: 'These labels are too small for a QR code that phones can read. Use a bigger label, or just numbers.' };
+      var q = 2, cells = m.length + 2 * q, px = Math.max(4, Math.ceil(600 / cells)), c = document.createElement('canvas');
+      c.width = c.height = cells * px;
+      var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.fillStyle = '#000';
+      m.forEach(function (row, r) { row.forEach(function (dark, k) { if (dark) x.fillRect((k + q) * px, (r + q) * px, px, px); }); });
+      if (side / cells < 0.012 * 72) return { problem: 'That’s too much text for a QR code this small. Use fewer characters.' };
+      return { canvas: c, w: side, h: side };
+    }
+    var bits = T.code128(data);
+    if (!bits) return { problem: 'A barcode can hold only letters, numbers, spaces and common symbols. Use a QR code for other characters.' };
+    var quiet = 10, mods = bits.length + 2 * quiet;
+    var w = Math.min(box.width, mods * 0.015 * 72), h = Math.min(0.55 * 72, roomH);
+    if (w / mods < 0.0075 * 72) return { problem: 'That’s too much text for a barcode this wide. Use fewer characters, or a QR code.' };
+    if (h < 0.25 * 72) return { problem: 'These labels are too short for a barcode. Use a bigger label, or just numbers.' };
+    var mpx = 4, cv = document.createElement('canvas');
+    cv.width = mods * mpx; cv.height = Math.max(20, Math.round(cv.width * h / w));
+    var bx = cv.getContext('2d'); bx.fillStyle = '#fff'; bx.fillRect(0, 0, cv.width, cv.height); bx.fillStyle = '#000';
+    for (var i = 0; i < bits.length; i++) if (bits.charAt(i) === '1') bx.fillRect((i + quiet) * mpx, 0, mpx, cv.height);
+    return { canvas: cv, w: w, h: h };
+  }
+  // Text size: big for numbers alone, smaller under a code; shrinks to fit the width.
+  function codeTextSize(text, f, withCode) {
+    var box = textBox(f), size = withCode ? Math.max(6, f.font.size) : Math.max(f.font.size, Math.min(28, Math.floor(box.height * 0.5)));
+    while (size > 6 && measure(text, 'bold ' + size + 'pt ' + (f.font.name || 'Arial')) > box.width) size -= 0.5;
+    return size;
+  }
+  function codeItem(o, i, f) {
+    var lab = codeLabel(o, i), size = codeTextSize(lab.text, f, o.kind !== 'none');
+    var paras = lab.text ? [{ t: lab.text, size: size, b: true, align: 'center' }] : [];
+    if (o.kind === 'none') return { paras: paras, label: lab };
+    var pic = codePicture(o.kind, lab.data, f, lab.text ? size : 0);
+    if (pic.problem) return { problem: pic.problem, label: lab };
+    return { paras: paras, pic: { b64: pic.canvas.toDataURL('image/png').split(',')[1], w: pic.w, h: pic.h, align: 'center' }, label: lab, canvas: pic.canvas };
+  }
+  var codesShown = false;
+  function renderCodes() {
+    var c = codeSettings(), open = openList().length;
+    if (!codesShown) {
+      codesShown = true;
+      $('num-text').value = c.text; $('num-pad').value = String(c.pad); $('code-data').value = c.data;
+      $('num-start').value = c.next; $('num-count').value = open || 1;
+    }
+    Array.prototype.forEach.call($('code-kind').querySelectorAll('button'), function (b) { b.setAttribute('aria-checked', String(b.dataset.kind === c.kind)); });
+    $('code-data-row').hidden = c.kind === 'none';
+    var o = codesFromForm();
+    $('num-fill').disabled = !open;
+    $('num-fill').textContent = open ? 'Fill ' + plural(Math.min(Math.max(1, o.count || 1), open), 'open label') : 'No open labels';
+    drawCodePreview(o);
+  }
+  function drawCodePreview(o) {
+    var f = st.fmt, msg = $('code-msg'), cv = $('code-canvas'), pxPerIn = 60;
+    var go = function () {
+      var it = o.count >= 1 && o.start >= 0 ? codeItem(o, 0, f) : { problem: 'Enter the first number and how many labels to fill.' };
+      var rowH = rowHeightIn(f);
+      cv.width = Math.round(f.label.width * pxPerIn); cv.height = Math.round(rowH * pxPerIn);
+      var x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height);
+      if (it.problem) { msg.textContent = it.problem; msg.className = 'warn'; return; }
+      msg.className = 'hint';
+      msg.textContent = 'How label ' + it.label.n + ' will look' + (o.count > 1 ? '. The last one says “' + codeLabel(o, o.count - 1).text + '”.' : '.');
+      var k = pxPerIn / 72, picH = it.pic ? it.pic.h * k + 2 * k : 0, textH = it.paras.length ? it.paras[0].size * 1.2 * k : 0;
+      var top = f.align === 'top' ? f.topSpace * pxPerIn : (cv.height - picH - textH) / 2;
+      if (it.pic) x.drawImage(it.canvas, (cv.width - it.pic.w * k) / 2, top, it.pic.w * k, it.pic.h * k);
+      if (textH) {
+        x.fillStyle = '#000'; x.textAlign = 'center'; x.textBaseline = 'top';
+        x.font = 'bold ' + (it.paras[0].size * k) + 'px ' + (f.font.name || 'Arial');
+        x.fillText(it.paras[0].t, cv.width / 2, top + picH);
+      }
+    };
+    if (o.kind === 'qr' && !window.qrcode) { msg.textContent = 'Loading the QR code maker…'; loadQrLib().then(function () { drawCodePreview(codesFromForm()); }, function (e) { msg.textContent = e.userMessage; msg.className = 'warn'; }); return; }
+    go();
+  }
+  function saveCodes(extra) {
+    var c = codeSettings(), o = codesFromForm();
+    c.text = o.text; c.pad = o.pad; c.data = o.data;
+    Object.keys(extra || {}).forEach(function (k) { c[k] = extra[k]; });
+    storeJson(LS.codes, c);
+  }
+  function fillCodes() {
+    var f = st.fmt, o = codesFromForm(), open = openList();
+    if (!(o.start >= 0)) { say('Enter the first number.', 'warn'); $('num-start').focus(); return; }
+    if (!(o.count >= 1)) { say('Enter how many labels to fill.', 'warn'); $('num-count').focus(); return; }
+    if (!(o.total >= 0)) { say('Enter the total as a whole number, or leave it empty.', 'warn'); return; }
+    if (!open.length) { say('There are no open labels on this sheet.', 'warn'); return; }
+    var count = Math.min(o.count, open.length);
+    var ready = o.kind === 'qr' ? loadQrLib() : Promise.resolve();
+    ready.then(function () {
+      var items = [];
+      for (var i = 0; i < count; i++) {
+        var it = codeItem(o, i, f);
+        if (it.problem) { say(it.problem, 'warn'); return; }
+        items.push({ n: open[i], paras: it.paras, pic: it.pic });
+      }
+      saveCodes({ next: o.start + count });
+      queueChange(function () { return writeEach(items); }).then(refresh).then(function () {
+        $('num-start').value = o.start + count;
+        say('Filled ' + labelList(items.map(function (x) { return x.n; })) + ' with ' + codeLabel(o, 0).text + (count > 1 ? ' to ' + codeLabel(o, count - 1).text : '') + '.' +
+          (o.count > count ? ' The sheet ran out of open labels. To go on, print it, then fill your next sheet; numbering starts at ' + (o.start + count) + '.' : ''));
+        renderCodes();
+      });
+    }, function (e) { say(e.userMessage || 'The QR code maker didn’t load.', 'warn'); });
+  }
+
   // ---------- fit text ----------
   function fitLabels(nums) {
     var f = st.fmt, box = textBox(f), tooLong = [], fitted = [];
@@ -1174,7 +1592,7 @@
   // in order: row 1 goes on the first open label, and so on. An empty row
   // leaves its label open. Rows past the open labels go on new sheets.
   function fillFromRows(rows) {
-    var f = st.fmt, per = total();
+    var f = st.fmt;
     var lines = (rows || []).map(function (r) {
       r = r || [];
       return T.addressLines({ name: r[0], company: r[1], street: r[2], apt: r[3], city: r[4], state: r[5], zip: r[6] }, { home: homeCountry() });
@@ -1188,7 +1606,7 @@
     var items = [];
     lines.slice(0, open.length).forEach(function (l, i) { if (l.length) items.push({ n: open[i], paras: parasFor(l) }); });
     var nums = items.map(function (it) { return it.n; });
-    var rest = lines.slice(open.length), restCount = rest.filter(function (l) { return l.length; }).length;
+    var spots = lines.slice(open.length), rest = spots.filter(function (l) { return l.length; });
     var fillHere = function () {
       if (!items.length) return Promise.resolve();
       return queueChange(function () { return writeEach(items); }).then(refresh);
@@ -1197,24 +1615,140 @@
       fillHere().then(function () { say('Filled ' + labelList(nums) + ' from the table.'); });
       return;
     }
-    var sheets = Math.ceil(rest.length / per), windows = sheets === 1 ? 'It opens in its own window.' : 'Each opens in its own window.';
-    ask((open.length ? 'This sheet has ' + plural(open.length, 'open label') + '. Fill them and put the other ' + plural(restCount, 'address', 'es') + ' on '
-      : 'This sheet has no open labels. Put the ' + plural(restCount, 'address', 'es') + ' on ') + plural(sheets, 'new sheet') + '? ' + windows,
-      'Fill and make ' + plural(sheets, 'sheet'), function () {
-        fillHere().then(function () {
-          return queue(function () { return createSheets(f, spillPrefills(f, rest.map(function (l) { return l.length ? parasFor(l) : null; }))); });
-        }).then(function () {
-          say('Filled ' + (nums.length ? labelList(nums) + ' here and ' : '') + 'made ' + plural(sheets, 'new sheet') + ' for the other ' + plural(restCount, 'address', 'es') + '. ' +
-            (sheets === 1 ? 'It opened in its own window.' : 'They opened in their own windows.'));
-        });
+    askOverflow(f, nums.length, rest.map(parasFor), 'address', fillHere, function (msg) {
+      say((nums.length ? 'Filled ' + labelList(nums) + ' here and ' : 'Nothing went on this sheet; ') + msg);
+    }, spots.map(function (l) { return l.length ? parasFor(l) : null; }));
+  }
+
+  // ---------- backing up and restoring settings ----------
+  // A backup is a Word document holding this Mac's settings (address book,
+  // return address, sizes, adjustments, stock, logo...). Things that only make
+  // sense on this Mac, or for a moment, stay out.
+  var BACKUP_SKIP = /^lsk\.(tableInfo|tableDraft|addinRef|fillJob|sheets|testCheck\.|testNudge\.|last\.)/;
+  function backupKeys(withKey) {
+    var out = {};
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf('lsk.') === 0 && !BACKUP_SKIP.test(k) && (withKey || k !== LS.geoKey)) out[k] = localStorage.getItem(k);
+      }
+    } catch (e) { /* storage blocked */ }
+    return out;
+  }
+  function toB64(text) { return window.btoa(unescape(encodeURIComponent(text))); }
+  function fromB64(b64) { return decodeURIComponent(escape(window.atob(b64))); }
+  function backupSummary(data) {
+    var parse = function (k) { try { return JSON.parse(data[k] || 'null'); } catch (e) { return null; } };
+    var withPrefix = function (prefix) { return Object.keys(data).filter(function (k) { return k.indexOf(prefix) === 0; }); };
+    var b = parse(LS.book), sizes = parse(LS.custom);
+    var nudges = withPrefix(LS.nudge).filter(function (k) { var v = parse(k); return v && (v.x || v.y); }).length;
+    var stocks = withPrefix(LS.stock).length;
+    var lines = ['Address book: ' + plural(Array.isArray(b) ? b.length : 0, 'address', 'es'), 'Return address: ' + (data[LS.from] ? 'saved' : 'none')];
+    if (Array.isArray(sizes) && sizes.length) lines.push('Your own label sizes: ' + sizes.length);
+    lines.push('Printer adjustments: ' + (nudges ? plural(nudges, 'label size') : 'none'));
+    if (stocks) lines.push('Label stock and reorder links: ' + plural(stocks, 'label size'));
+    if (data[LS.logo]) lines.push('Logo: saved');
+    lines.push('Geoapify key: ' + (data[LS.geoKey] ? 'included' : 'not included'));
+    return lines;
+  }
+  function makeBackup() {
+    var withKey = $('backup-key').checked && !!store(LS.geoKey);
+    var payload = { app: 'Label Sheet Keeper', v: 1, at: Date.now(), version: VERSION, data: backupKeys(withKey) };
+    var lines = ['Made ' + fmtDate(payload.at) + ' with version ' + VERSION + '. It has:'].concat(backupSummary(payload.data).map(function (l) { return '•  ' + l; })).concat(['',
+      'To restore these settings, open this file in Word and click Restore these settings in the Label Sheet Keeper panel. Or, in the panel, open Back up or restore settings, click Restore from a backup file, and choose this file.',
+      'This file holds your addresses' + (withKey ? ' and your Geoapify key' : '') + '. Keep it somewhere private.']);
+    return findAddinRef().then(function (ref) {
+      return S.buildBackupDocx(null, { data: toB64(JSON.stringify(payload)), lines: lines, addinRef: ref });
+    }).then(function (b64) {
+      return Word.run(function (ctx) {
+        var d = ctx.application.createDocument(b64);
+        return ctx.sync().then(function () { d.open(); return ctx.sync(); });
       });
+    });
+  }
+  function backupFromXml(xml) {
+    var m = /<(?:[\w.-]+:)?lskBackup\b[^>]*>([A-Za-z0-9+/=\s]+)<\/(?:[\w.-]+:)?lskBackup>/.exec(String(xml || ''));
+    if (!m) return null;
+    try {
+      var p = JSON.parse(fromB64(m[1].replace(/\s+/g, '')));
+      return p && p.app === 'Label Sheet Keeper' && p.data && typeof p.data === 'object' ? p : null;
+    } catch (e) { return null; }
+  }
+  function backupFromZip(zip) {
+    var names = Object.keys(zip.files).filter(function (n) { return /^customXml\/item\d+\.xml$/i.test(n); });
+    return Promise.all(names.map(function (n) { return zip.file(n).async('string'); })).then(function (xmls) {
+      for (var i = 0; i < xmls.length; i++) { var p = backupFromXml(xmls[i]); if (p) return p; }
+      return null;
+    });
+  }
+  // The backup in the open document: through Word's custom XML parts, or by
+  // reading the document's own file.
+  function readBackupHere() {
+    var viaParts = new Promise(function (resolve, reject) {
+      try {
+        Office.context.document.customXmlParts.getByNamespaceAsync(S.BACKUP_NS, function (res) {
+          if (res.status !== Office.AsyncResultStatus.Succeeded || !res.value || !res.value.length) { reject(); return; }
+          res.value[0].getXmlAsync(function (r) {
+            var p = r.status === Office.AsyncResultStatus.Succeeded ? backupFromXml(r.value) : null;
+            if (p) resolve(p); else reject();
+          });
+        });
+      } catch (e) { reject(e); }
+    });
+    return viaParts.catch(function () {
+      if (!window.JSZip) return null;
+      return readOwnFile().then(function (bytes) { return window.JSZip.loadAsync(bytes); }).then(backupFromZip);
+    });
+  }
+  function restoreBackup(p) {
+    var keepKey = !p.data[LS.geoKey];
+    try {
+      var old = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf('lsk.') === 0 && !BACKUP_SKIP.test(k) && !(keepKey && k === LS.geoKey)) old.push(k);
+      }
+      old.forEach(function (k2) { localStorage.removeItem(k2); });
+      Object.keys(p.data).forEach(function (k3) {
+        if (k3.indexOf('lsk.') === 0 && !BACKUP_SKIP.test(k3) && typeof p.data[k3] === 'string') localStorage.setItem(k3, p.data[k3]);
+      });
+    } catch (e) { throw userError('The settings couldn’t be saved on this Mac.'); }
+    codesShown = false;
+  }
+  function askRestore(p, after) {
+    ask('Restore the settings from the backup made ' + fmtDate(p.at) + '? They replace the Label Sheet Keeper settings on this Mac.', 'Restore', function () {
+      try { restoreBackup(p); } catch (e) { showError(e); return; }
+      if (after) after();
+      say('Restored your settings from the backup made ' + fmtDate(p.at) + '.');
+    });
+  }
+  var backupHere = null;   // null: not read yet, false: reading, 'bad', or the backup
+  function renderBackupView() {
+    show('v-backup');
+    if (backupHere === null) {
+      backupHere = false;
+      $('backup-made').textContent = 'Reading the backup…';
+      $('backup-restore').hidden = true;
+      readBackupHere().then(function (p) { backupHere = p || 'bad'; renderBackupView(); }, function () { backupHere = 'bad'; renderBackupView(); });
+      return;
+    }
+    if (!backupHere) return;
+    var ul = $('backup-sum'), bad = backupHere === 'bad';
+    ul.innerHTML = '';
+    $('backup-restore').hidden = bad;
+    if (bad) { $('backup-made').textContent = 'The settings in this backup couldn’t be read. If you have the file, open the panel in any other document and use Restore from a backup file.'; return; }
+    $('backup-made').textContent = 'Made ' + fmtDate(backupHere.at) + (backupHere.version ? ' with version ' + backupHere.version : '') + '. It has:';
+    backupSummary(backupHere.data).forEach(function (l) { ul.appendChild(el('li', '', l)); });
   }
 
   // ---------- rendering ----------
   function show(view) {
-    ['v-loading', 'v-outside', 'v-old', 'v-none', 'v-broken', 'v-sheet'].forEach(function (id) { $(id).hidden = id !== view; });
+    ['v-loading', 'v-outside', 'v-old', 'v-none', 'v-broken', 'v-sheet', 'v-backup'].forEach(function (id) { $(id).hidden = id !== view; });
   }
   function render() {
+    $('backup-box').hidden = !(st.kind === 'sheet' || st.kind === 'none');
+    $('backup-key-row').hidden = !store(LS.geoKey);
+    if (st.kind === 'backup') { renderBackupView(); return; }
     if (st.kind === 'none' || choosing) { renderChooser(); show('v-none'); return; }
     if (st.kind === 'broken') {
       $('broken-msg').textContent = st.reason;
@@ -1239,6 +1773,7 @@
     $('sheets-count').textContent = entries.length;
     renderSheetList($('sheets-list'), entries, true);
     renderHistory();
+    renderStock();
     renderSettings();
     renderAbout();
   }
@@ -1365,7 +1900,7 @@
   }
 
   function fillTabs() {
-    return st.fmt.shipping ? [['file', 'Label file'], ['addr', 'Address']] : [['copy', 'Copy'], ['addr', 'Address'], ['table', 'Table']];
+    return st.fmt.shipping ? [['file', 'Label file'], ['addr', 'Address']] : [['copy', 'Copy'], ['addr', 'Address'], ['table', 'Table'], ['codes', 'Numbers']];
   }
   function currentTab() {
     var tabs = fillTabs(), saved = store(st.fmt.shipping ? LS.shipTab : LS.fillTab);
@@ -1385,7 +1920,7 @@
       b.addEventListener('click', function () { setFillTab(t[0]); });
       tabsEl.appendChild(b);
     });
-    ['copy', 'file', 'addr', 'table'].forEach(function (id) { $('pane-' + id).hidden = id !== tab; });
+    ['copy', 'file', 'addr', 'table', 'codes'].forEach(function (id) { $('pane-' + id).hidden = id !== tab; });
 
     // Shipping sheets: which label is next, and which half is which.
     var applies = sideApplies(f), side = getSide(f);
@@ -1399,8 +1934,9 @@
     $('side-bottom').setAttribute('aria-pressed', String(side === 'bottom'));
 
     if (tab === 'copy') renderHere();
-    if (tab === 'file') { $('ship-place').disabled = !n; if (ship.src) drawFit(); }
+    if (tab === 'file') { $('ship-place').disabled = !n; if (ship.src) drawFit(); renderWaiting(); }
     if (tab === 'addr') renderAddress();
+    if (tab === 'codes') renderCodes();
     if (tab === 'table') {
       $('table-open').disabled = !n;
       $('table-msg').textContent = n ? plural(openList().length, 'open label') + ' on this sheet. Extra addresses go on new sheets.' : 'There are no open labels on this sheet.';
@@ -1501,6 +2037,63 @@
     $('printed-btn').disabled = !ready;
     $('undo-row').hidden = !undo;
     if (undo) $('undo-msg').textContent = cap(labelList(undo.nums)) + (undo.nums.length === 1 ? ' was' : ' were') + ' marked used.';
+    // Lining up from a scan
+    $('scan-label').hidden = !scanWorks(f);
+    $('scan-label2').hidden = !scanWorks(f);
+    renderScan();
+    // Running low on labels
+    var sk = stockFor(f.id), low = stockLow(sk);
+    $('stock-low').hidden = !low;
+    if (low) {
+      $('stock-low-msg').textContent = (sk.on ? plural(sk.on, 'sheet') + ' of ' : 'No sheets of ') + 'these labels left' + (sk.on ? '.' : ' after this one.') + (sk.link ? '' : ' Add where you buy them in Label stock to reorder in one click.');
+      $('stock-low-order').textContent = sk.link ? 'Reorder' : 'Set up reorder';
+      $('stock-low-got').hidden = !sk.pack;
+    }
+  }
+
+  function renderStock() {
+    var f = st.fmt, sk = storeJson(LS.stock + f.id) || {}, counting = typeof sk.on === 'number';
+    $('stock-sum').textContent = counting ? '(' + plural(sk.on, 'sheet') + ')' : '';
+    var put = function (id, v) { if (document.activeElement !== $(id)) $(id).value = v === undefined || v === null ? '' : v; };
+    put('stock-on', counting ? sk.on : ''); put('stock-pack', sk.pack); put('stock-warn', sk.warn === undefined ? '' : sk.warn);
+    put('stock-packs', sk.packs || 1); put('stock-link', sk.link || '');
+    $('stock-got').hidden = !(counting && sk.pack);
+    $('stock-order').hidden = !sk.link;
+    $('stock-off').hidden = !counting;
+    var pn = productNumbers(f);
+    $('stock-kind').textContent = pn.laser
+      ? 'These labels are Avery ' + pn.laser + ' for laser printers' + (pn.inkjet ? ' and Avery ' + pn.inkjet + ' for inkjet printers' : '') + '. Buy the kind made for your printer.'
+      : 'Buy labels made for your kind of printer: laser labels for a laser printer, inkjet labels for an inkjet.';
+    renderStockLink();
+  }
+  function renderStockLink() {
+    var v = $('stock-link').value.trim(), r = v ? T.reorderLink(v, 1) : null, m = $('stock-link-msg');
+    m.className = v && !r ? 'warn' : 'hint';
+    m.textContent = !v ? 'Amazon and Walmart links add the labels straight to your cart. Other stores open the product page.'
+      : !r ? 'Paste the whole web address, starting with https://'
+      : r.cart ? 'Reorder adds the labels to your ' + r.store + ' cart.' : 'Reorder opens this page at ' + r.store + '. Add the labels to your cart there.';
+  }
+  function reorder() {
+    var f = st.fmt, sk = storeJson(LS.stock + f.id) || {};
+    var r = sk.link ? T.reorderLink(sk.link, sk.packs || 1) : null;
+    if (!r) {
+      $('stock-box').open = true;
+      try { $('stock-box').scrollIntoView({ block: 'nearest' }); } catch (e) { /* old browser */ }
+      $('stock-link').focus();
+      say('Paste a link to the labels you buy, then click Save.');
+      return;
+    }
+    openLink(r.url);
+    var packs = plural(sk.packs || 1, 'pack');
+    say(r.cart ? 'Opened ' + r.store + ' to add ' + packs + ' to your cart. Check out there.' : 'Opened the product page at ' + r.store + '. Add ' + packs + ' to your cart there.');
+  }
+  function gotPack() {
+    var f = st.fmt, sk = stockFor(f.id);
+    if (!sk || !sk.pack) { $('stock-box').open = true; $('stock-pack').focus(); say('Enter how many sheets come in a pack, then click Save.'); return; }
+    sk.on += sk.pack;
+    storeJson(LS.stock + f.id, sk);
+    render();
+    say('Added ' + plural(sk.pack, 'sheet') + '. You have ' + plural(sk.on, 'sheet') + ' of these labels.');
   }
 
   function renderHistory() {
@@ -1680,13 +2273,11 @@
           return queueChange(function () { return copyFrom(src, targets); }).then(refresh);
         };
         if (!short) { copyHere().then(function () { say('Copied ' + labelName(src) + ' to ' + labelList(targets) + '.'); }); return; }
-        ask(open.length
-          ? 'Only ' + plural(open.length, 'open label') + ' left. Copy to those and put the other ' + plural(short, 'copy', 'ies').replace('copyies', 'copies') + ' on a new sheet?'
-          : 'There are no open labels left. Put ' + plural(short, 'copy', 'ies').replace('copyies', 'copies') + ' on a new sheet?', 'Copy and make a sheet', function () {
-          copyHere().then(function () { return queue(function () { return readLabelParas(src); }); }).then(function (paras) {
-            var copies = []; for (var i = 0; i < short; i++) copies.push(paras);
-            return queue(function () { return createSheets(st.fmt, spillPrefills(st.fmt, copies)); });
-          }).then(function () { say('Copied ' + labelName(src) + (targets.length ? ' to ' + labelList(targets) + ' and' : '') + ' to a new sheet.'); });
+        queue(function () { return readLabelParas(src); }).then(function (paras) {
+          var copies = []; for (var i = 0; i < short; i++) copies.push(paras);
+          askOverflow(st.fmt, targets.length, copies, 'copy', copyHere, function (msg) {
+            say('Copied ' + labelName(src) + (targets.length ? ' to ' + labelList(targets) + ' and ' : '; ') + msg);
+          });
         });
       });
     }
@@ -1733,6 +2324,77 @@
       try { nd.scrollIntoView({ block: 'center' }); } catch (e) { /* old browser */ }
       $('nudge-x').focus();
       say('Enter how far the boxes were off, then click Save. Print another test page to check.');
+    });
+    // Label stock
+    $('stock-link').addEventListener('input', renderStockLink);
+    // Numbers & codes
+    ['num-text', 'num-start', 'num-count', 'num-total', 'num-pad', 'code-data'].forEach(function (id) {
+      $(id).addEventListener('input', function () { saveCodes(); renderCodes(); });
+      $(id).addEventListener('change', function () { saveCodes(); renderCodes(); });
+    });
+    Array.prototype.forEach.call($('code-kind').querySelectorAll('button'), function (b) {
+      b.addEventListener('click', function () { saveCodes({ kind: b.dataset.kind }); renderCodes(); });
+    });
+    $('num-fill').addEventListener('click', fillCodes);
+
+    // Back up and restore
+    $('backup-make').addEventListener('click', function () {
+      queue(makeBackup).then(function () {
+        say('Your backup opened in its own window. Save it (⌘S) somewhere safe, such as iCloud Drive. It holds your addresses, so keep it private.');
+      });
+    });
+    var restoreIn = $('restore-file');
+    restoreIn.addEventListener('change', function () {
+      var file = restoreIn.files && restoreIn.files[0]; restoreIn.value = '';
+      if (!file) return;
+      if (!window.JSZip) { say('The file reader didn’t load. Close and reopen the panel.', 'warn'); return; }
+      readFileAs(file, 'buffer').then(function (buf) { return window.JSZip.loadAsync(buf); }).then(backupFromZip).then(function (p) {
+        if (!p) { say('That file isn’t a Label Sheet Keeper backup. Choose the backup document you saved.', 'warn'); return; }
+        askRestore(p, render);
+      }).catch(function () { say('That file couldn’t be read. Choose the backup document (.docx) you saved.', 'warn'); });
+    });
+    $('backup-restore').addEventListener('click', function () {
+      if (backupHere && backupHere !== 'bad') askRestore(backupHere, function () { $('backup-done').hidden = false; });
+    });
+    $('stock-save').addEventListener('click', function () {
+      var f = st.fmt, num = function (id) { var v = $(id).value.trim(); return v === '' ? null : Math.round(Number(v)); };
+      var on = num('stock-on'), pack = num('stock-pack'), warn = num('stock-warn'), packs = num('stock-packs'), link = $('stock-link').value.trim();
+      if (on === null && !link) { say('Enter how many sheets you have now, or a link to where you buy them.', 'warn'); $('stock-on').focus(); return; }
+      if ((on !== null && !(on >= 0 && on <= 9999)) || (pack !== null && !(pack >= 1 && pack <= 9999)) || (warn !== null && !(warn >= 0 && warn <= 9999)) || (packs !== null && !(packs >= 1 && packs <= 99))) {
+        say('Check the numbers: whole numbers only, and at least 1 sheet in a pack.', 'warn'); return;
+      }
+      if (link && !T.reorderLink(link, 1)) { say('That link doesn’t look right. Paste the whole web address, starting with https://', 'warn'); $('stock-link').focus(); return; }
+      var rec = { pack: pack || 0, warn: warn === null ? Math.min(5, pack || 5) : warn, packs: packs || 1, link: link };
+      if (on !== null) rec.on = on;
+      storeJson(LS.stock + f.id, rec);
+      render();
+      say(on !== null ? 'Saved. The count goes down by one each time a fresh sheet goes through the printer.' : 'Saved the link. Enter how many sheets you have to count them too.');
+    });
+    $('stock-got').addEventListener('click', gotPack);
+    $('stock-low-got').addEventListener('click', gotPack);
+    $('stock-order').addEventListener('click', reorder);
+    $('stock-low-order').addEventListener('click', reorder);
+    $('stock-off').addEventListener('click', function () {
+      var f = st.fmt, sk = storeJson(LS.stock + f.id) || {};
+      delete sk.on;
+      storeJson(LS.stock + f.id, sk.link || sk.pack ? sk : null);
+      render();
+      say('Stopped counting sheets of these labels. Your link is kept for reordering.');
+    });
+
+    var scanIn = $('scan-file');
+    scanIn.addEventListener('change', function () { var file = scanIn.files && scanIn.files[0]; scanIn.value = ''; handleScan(file); });
+    $('scan-save').addEventListener('click', function () {
+      if (!scanResult || !st.fmt) return;
+      storeJson(LS.nudge + st.fmt.id, scanResult.nudge);
+      store(LS.testCheck + st.fmt.id, null);
+      scanResult = null;
+      render();
+      say('Saved. New sheets and test pages for this size use it. Print another test page to check it.' + ($('nudge-apply').hidden ? '' : ' To move the labels on this sheet too, click Apply to this sheet in Settings.'));
+    });
+    $('scan-done').addEventListener('click', function () {
+      if (st.fmt) store(LS.testCheck + st.fmt.id, null);
+      scanResult = null; render(); say('You’re set for this printer and these labels.');
     });
     $('use-up-mine').addEventListener('click', function () {
       var lines = textLines(fromAddress()), open = openList();
@@ -1789,6 +2451,7 @@
 
     $('confirm-yes').addEventListener('click', function () { var a = pendingConfirm; closeAsk(); if (a) a(); });
     $('confirm-no').addEventListener('click', closeAsk);
+    $('confirm-alt').addEventListener('click', function () { var a = pendingAlt; closeAsk(); if (a) a(); });
     wireFileLabels();
 
     // Add your own size
@@ -1832,14 +2495,13 @@
       });
     });
     var input = $('ship-file');
-    input.addEventListener('change', function () { handleFile(input.files && input.files[0]); input.value = ''; });
+    input.addEventListener('change', function () { handleFiles(input.files); input.value = ''; });
     var card = $('pane-file');
     card.addEventListener('dragover', function (e) { e.preventDefault(); card.classList.add('drop'); });
     card.addEventListener('dragleave', function () { card.classList.remove('drop'); });
     card.addEventListener('drop', function (e) {
       e.preventDefault(); card.classList.remove('drop');
-      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) handleFile(f);
+      handleFiles(e.dataTransfer && e.dataTransfer.files);
     });
     // Paste a screenshot: ⌘V anywhere in the panel (outside text boxes).
     document.addEventListener('paste', function (e) {
@@ -1865,6 +2527,9 @@
       drawCrop();
       say(found ? 'Found the label’s border.' : 'No printed border found, so the white edges were trimmed instead. Drag across the label if needed.', found ? '' : 'warn');
     });
+    $('pg-all').addEventListener('click', usePdfPages);
+    $('wait-place').addEventListener('click', placeWaiting);
+    $('wait-clear').addEventListener('click', function () { ship.waiting = []; renderWaiting(); say('Cleared the waiting labels.'); });
     $('crop-all').addEventListener('click', function () { if (ship.src) { ship.crop = { x: 0, y: 0, w: ship.src.width, h: ship.src.height }; drawCrop(); } });
     $('crop-turn').addEventListener('click', function () { ship.turn = (ship.turn + 90) % 360; drawFit(); });
 
@@ -2059,7 +2724,7 @@
       // Learn how Word attaches this add-in, so new sheets can open with the panel.
       findAddinRef().then(function () { if (st.kind === 'sheet') renderAbout(); });
       try { Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, onSelectionChanged); } catch (e) { /* older Word */ }
-      window.LSK_TEST = { st: function () { return st; }, ship: ship, output: output, handleFile: handleFile, fillFromRows: fillFromRows, checkPrinted: checkPrinted };
+      window.LSK_TEST = { st: function () { return st; }, ship: ship, output: output, handleFile: handleFile, fillFromRows: fillFromRows, checkPrinted: checkPrinted, checkFillJob: checkFillJob, scan: function () { return scanResult; } };
     });
   }
   start();
