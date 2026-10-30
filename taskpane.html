@@ -283,6 +283,22 @@
           <label for="trip-limit">Trips through the printer per sheet</label>
           <input id="trip-limit" type="number" min="1" max="20" value="3" inputmode="numeric">
         </div>
+        <div class="row">
+          <label for="home-country">You mail from</label>
+          <select id="home-country" class="fit"><option value="US">the United States</option><option value="CA">Canada</option></select>
+        </div>
+        <div id="geo" class="nudge">
+          <span class="fl">Address suggestions</span>
+          <p class="hint">With a free Geoapify key, the table window suggests US and Canadian addresses as you type a street. The key stays on this Mac. <a href="https://therearenousernamesleft.github.io/label-sheet-keeper/#address-suggestions" target="_blank" rel="noopener">How to get a key</a></p>
+          <div class="row">
+            <input id="geo-key" type="text" autocomplete="off" spellcheck="false" placeholder="Paste your Geoapify API key" aria-label="Geoapify API key">
+          </div>
+          <div class="row">
+            <button type="button" id="geo-save" class="btn ghost sm">Save key</button>
+            <button type="button" id="geo-remove" class="btn link sm" hidden>Remove key</button>
+          </div>
+          <p id="geo-status" class="hint" role="status"></p>
+        </div>
         <div id="nudge" class="nudge">
           <span class="fl">Printer adjustment for this size</span>
           <div class="row">

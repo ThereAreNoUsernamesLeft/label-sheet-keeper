@@ -29,9 +29,13 @@
   <div class="grid-wrap">
     <table id="grid" class="grid" aria-label="Addresses">
       <colgroup><col class="c-n"><col class="c-name"><col class="c-co"><col class="c-st"><col class="c-apt"><col class="c-city"><col class="c-state"><col class="c-zip"><col class="c-x"></colgroup>
-      <thead><tr><th title="The label each row goes on">Label</th><th>Name</th><th>Company</th><th>Street</th><th>Apt/Suite</th><th>City</th><th>State</th><th>ZIP</th><th><span class="sr">Delete</span></th></tr></thead>
+      <thead><tr><th title="The label each row goes on">Label</th><th>Name</th><th>Company</th><th>Street</th><th>Apt/Suite</th><th>City</th><th>State/Prov</th><th>ZIP/Postal</th><th><span class="sr">Delete</span></th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
+  </div>
+  <div id="sugg" class="sugg" role="listbox" aria-label="Address suggestions" hidden>
+    <div id="sugg-list"></div>
+    <a class="sugg-credit" href="https://www.geoapify.com/" target="_blank" rel="noopener">Powered by Geoapify</a>
   </div>
   <footer class="bottom">
     <p id="count" class="hint"></p>

@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.3.2';
+  var VERSION = '1.4';
   var ADDIN_ID = '8d491c85-a76d-4d26-a6f5-b7b2dd4a1711';   // must match manifest.xml <Id>
   var F = window.LSK_FORMATS;
   var S = window.LSK_SHEET;
@@ -32,7 +32,8 @@
     from: 'lsk.fromAddress', autoMark: 'lsk.autoMark', side: 'lsk.side.', fillTab: 'lsk.fillTab', shipTab: 'lsk.shipTab',
     addinRef: 'lsk.addinRef', feedArrow: 'lsk.feedArrow', tripLimit: 'lsk.tripLimit', nudge: 'lsk.nudge.', testCheck: 'lsk.testCheck.',
     warnPass: 'lsk.warnPassHidden', last: 'lsk.last.', book: 'lsk.addressBook', design: 'lsk.design', logo: 'lsk.logo',
-    custom: 'lsk.customFormats', sheets: 'lsk.sheets', tableInfo: 'lsk.tableInfo', tableDraft: 'lsk.tableDraft'
+    custom: 'lsk.customFormats', sheets: 'lsk.sheets', tableInfo: 'lsk.tableInfo', tableDraft: 'lsk.tableDraft',
+    home: 'lsk.homeCountry', geoKey: 'lsk.geoKey'
   };
   var USED_TAG = 'lsk-used';
 
@@ -76,6 +77,7 @@
   function labelList(list) { return (list.length === 1 ? 'label ' : 'labels ') + ranges(list); }
   function total() { return st.fmt ? st.fmt.across * st.fmt.down : 0; }
   function keys(obj) { return Object.keys(obj || {}).map(Number).sort(function (a, b) { return a - b; }); }
+  function homeCountry() { return store(LS.home) === 'CA' ? 'CA' : 'US'; }
   function openList() { var a = []; for (var n = 1; n <= total(); n++) if (!st.used[n] && !st.ready[n]) a.push(n); return a; }
   function nextOpen() { var o = openList(); return o.length ? o[0] : 0; }
   function userError(msg) { var e = new Error(msg); e.userMessage = msg; return e; }
@@ -1175,7 +1177,7 @@
     var f = st.fmt, per = total();
     var lines = (rows || []).map(function (r) {
       r = r || [];
-      return T.addressLines({ name: r[0], company: r[1], street: r[2], apt: r[3], city: r[4], state: r[5], zip: r[6] });
+      return T.addressLines({ name: r[0], company: r[1], street: r[2], apt: r[3], city: r[4], state: r[5], zip: r[6] }, { home: homeCountry() });
     });
     while (lines.length && !lines[lines.length - 1].length) lines.pop();
     var count = lines.filter(function (l) { return l.length; }).length;
@@ -1525,6 +1527,14 @@
     if (document.activeElement !== $('nudge-y')) $('nudge-y').value = nd.y;
     var ap = st.applied || { x: 0, y: 0 };
     $('nudge-apply').hidden = Math.abs(ap.x - nd.x) < 0.001 && Math.abs(ap.y - nd.y) < 0.001;
+    $('home-country').value = homeCountry();
+    renderGeo();
+  }
+  function renderGeo(note) {
+    var key = store(LS.geoKey);
+    $('geo-remove').hidden = !key;
+    $('geo-save').textContent = key ? 'Replace key' : 'Save key';
+    $('geo-status').textContent = note || (key ? 'A key ending in ' + key.slice(-4) + ' is saved on this Mac.' : 'No key yet. Without one, a ZIP or postal code still fills in the city.');
   }
 
   function renderAbout() {
@@ -1750,6 +1760,25 @@
       render();
       say('Saved. New sheets and test pages for this size use it.' + ($('nudge-apply').hidden ? '' : ' Click Apply to this sheet to move these labels too.'));
     });
+    $('home-country').addEventListener('change', function () {
+      store(LS.home, $('home-country').value === 'CA' ? 'CA' : null);
+      say(homeCountry() === 'CA' ? 'Addresses in the US get “USA” as a last line.' : 'Addresses in Canada get “CANADA” as a last line.');
+    });
+    $('geo-save').addEventListener('click', function () {
+      var key = $('geo-key').value.trim();
+      if (!key) { renderGeo('Paste your key in the box first.'); $('geo-key').focus(); return; }
+      if (!/^[A-Za-z0-9_-]{16,64}$/.test(key)) { renderGeo('That doesn’t look like a Geoapify key. Copy the whole key from your Geoapify project.'); return; }
+      $('geo-save').disabled = true;
+      renderGeo('Checking the key with Geoapify…');
+      T.suggestAddresses('1 Main St', key).then(function () {
+        store(LS.geoKey, key); $('geo-key').value = '';
+        renderGeo('Key saved. The table window now suggests addresses as you type a street.');
+      }, function (e) {
+        if (e && (e.status === 401 || e.status === 403)) renderGeo('Geoapify didn’t accept that key. Check that you copied all of it, and that the key allows this add-in’s web address.');
+        else { store(LS.geoKey, key); $('geo-key').value = ''; renderGeo('Saved, but Geoapify couldn’t be reached to check the key. Suggestions will start once it can.'); }
+      }).then(function () { $('geo-save').disabled = false; });
+    });
+    $('geo-remove').addEventListener('click', function () { store(LS.geoKey, null); renderGeo('Key removed from this Mac.'); });
     $('nudge-apply').addEventListener('click', function () {
       var nd = nudgeFor(st.fmt.id), L = S.layout(st.fmt, { margins: st.margins, nudge: nd });
       if (L.clampedUp) say('These labels can’t move that far up on this sheet. They were moved as far as possible; new sheets get the full adjustment.', 'warn');
@@ -1961,7 +1990,7 @@
         renderAddress();
         say(lists.length ? 'Added ' + plural(added, 'address', 'es') + ' to the address book' + (lists.length > added ? ' (' + (lists.length - added) + ' were already there).' : '.') : 'No addresses with a street and city were found in that file.', lists.length ? '' : 'warn');
       };
-      var fromRows = function (rows) { return T.rowsToAddresses(rows).map(T.addressLines).filter(function (l) { return l.length > 1; }); };
+      var fromRows = function (rows) { return T.rowsToAddresses(rows).map(function (a) { return T.addressLines(a, { home: homeCountry() }); }).filter(function (l) { return l.length > 1; }); };
       if (/\.xlsx$/.test(name)) {
         reader.onload = function () { T.readXlsx(reader.result).then(function (rows) { done(fromRows(rows)); }).catch(function () { say('That Excel file couldn’t be read.', 'warn'); }); };
         reader.readAsArrayBuffer(file);

@@ -172,25 +172,52 @@
   }
 
   var US = /^(us|usa|u\.s\.a?\.?|united states( of america)?)$/i;
+  var CANADA = /^(ca|can|canada)$/i;
+  var PROVINCES = ['AB', 'BC', 'MB', 'NB', 'NL', 'NS', 'NT', 'NU', 'ON', 'PE', 'QC', 'SK', 'YT'];
+  var CA_POSTAL = /^([ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z])[ -]?(\d[ABCEGHJ-NPRSTV-Z]\d)$/i;
+  // Canadian postal code in Canada Post's form: "M5V 3L9".
+  function fixPostal(code) {
+    var m = CA_POSTAL.exec(String(code || '').trim());
+    return m ? (m[1] + ' ' + m[2]).toUpperCase() : String(code || '').trim();
+  }
+  // 'US', 'CA', or another country's name as given.
+  function countryOf(a) {
+    var c = String(a.country || '').trim();
+    if (c) return US.test(c) ? 'US' : CANADA.test(c) ? 'CA' : c;
+    if (PROVINCES.indexOf(String(a.state || '').trim().toUpperCase()) >= 0 || CA_POSTAL.test(String(a.zip || '').trim())) return 'CA';
+    return 'US';
+  }
   function fixZip(zip, state) {
     zip = String(zip || '').trim();
+    if (CA_POSTAL.test(zip)) return fixPostal(zip);
     if (/^\d{3,4}$/.test(zip) && (!state || /^[A-Za-z]{2}$/.test(state))) zip = ('00000' + zip).slice(-5);
     return zip;
   }
   // An address (fields) -> the lines printed on a label.
-  function addressLines(a) {
+  // opts.home: 'US' (default) or 'CA', the country the mail is sent from. Mail
+  // to the other country gets a country line at the bottom.
+  // Canadian addresses follow Canada Post: "5-123 Main St" for a unit, and
+  // "Toronto ON  M5V 3L9" (two spaces before the postal code).
+  function addressLines(a, opts) {
+    var home = opts && opts.home === 'CA' ? 'CA' : 'US';
+    var country = countryOf(a);
     var lines = [];
     var push = function (s) { s = String(s || '').trim(); if (s) lines.push(s); };
     push(a.name);
     if (a.company && norm(a.company) !== norm(a.name)) push(a.company);
     if (a.extra && a.extra.length) a.extra.forEach(push);
     var street = String(a.street || '').trim(), apt = String(a.apt || '').trim();
-    if (street && apt) push(street + (/^(#|apt|suite|ste|unit|fl|floor|rm|room)/i.test(apt) ? ' ' : ', ') + apt);
-    else { String(street).split(/\r?\n/).forEach(push); push(apt); }
-    var zip = fixZip(a.zip, a.state);
-    var cityLine = [String(a.city || '').trim(), [String(a.state || '').trim(), zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-    push(cityLine);
-    if (a.country && !US.test(String(a.country).trim())) push(a.country);
+    if (street && apt) {
+      if (country === 'CA' && /^\d+[A-Z]?$/i.test(apt) && /^\d/.test(street)) push(apt.toUpperCase() + '-' + street);
+      else push(street + (/^(#|apt|suite|ste|unit|fl|floor|rm|room)/i.test(apt) ? ' ' : ', ') + apt);
+    } else { String(street).split(/\r?\n/).forEach(push); push(apt); }
+    var city = String(a.city || '').trim(), state = String(a.state || '').trim();
+    if (country === 'CA') push([city, [state.toUpperCase(), fixPostal(a.zip)].filter(Boolean).join('  ')].filter(Boolean).join(' '));
+    else push([city, [state, fixZip(a.zip, a.state)].filter(Boolean).join(' ')].filter(Boolean).join(', '));
+    if (!lines.length) return lines;
+    if (country === 'CA') { if (home !== 'CA') push('CANADA'); }
+    else if (country === 'US') { if (home === 'CA') push('USA'); }
+    else push(a.country);
     return lines;
   }
 
@@ -299,17 +326,68 @@
   }
 
   // Label lines (or a formatted address) -> fields, best effort:
-  // first line is the name, a last line like "City, ST 12345" is split up.
+  // first line is the name, a last line like "City, ST 12345" or
+  // "City ON  M5V 3L9" is split up, and a country line is set aside.
   function linesToFields(lines) {
     lines = (lines || []).map(function (l) { return String(l).trim(); }).filter(Boolean);
     var a = { name: lines[0] || '', company: '', street: '', apt: '', city: '', state: '', zip: '', country: '' };
     var rest = lines.slice(1);
+    if (rest.length > 1 && (US.test(rest[rest.length - 1]) || CANADA.test(rest[rest.length - 1]))) a.country = rest.pop();
     if (rest.length && !/\d/.test(rest[0]) && rest.length > 2) a.company = rest.shift();
     var last = rest[rest.length - 1] || '';
-    var m = /^(.*?),?\s+([A-Za-z]{2})\.?\s+(\d{5}(?:-\d{4})?)$/.exec(last);
-    if (m) { a.city = m[1].replace(/,$/, ''); a.state = m[2].toUpperCase(); a.zip = m[3]; rest.pop(); }
+    var m = /^(.*?),?\s+([A-Za-z]{2})\.?\s+(\d{5}(?:-\d{4})?|[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d)$/.exec(last);
+    if (m) { a.city = m[1].replace(/,$/, ''); a.state = m[2].toUpperCase(); a.zip = fixZip(m[3]); rest.pop(); }
     a.street = rest.join(', ');
     return a;
+  }
+
+  // ---------- looking up addresses online ----------
+  function fetchJson(url, ms) {
+    var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = ctl ? setTimeout(function () { ctl.abort(); }, ms || 6000) : 0;
+    return fetch(url, ctl ? { signal: ctl.signal } : undefined).then(function (r) {
+      clearTimeout(timer);
+      if (!r.ok) { var e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
+      return r.json();
+    }, function (e) { clearTimeout(timer); throw e; });
+  }
+  var GEO = 'https://api.geoapify.com/v1/geocode/autocomplete?format=json&lang=en';
+  // City and state/province for a US ZIP or Canadian postal code. Uses the
+  // Geoapify key when there is one, otherwise the free Zippopotam.us service.
+  // Resolves to { city, state, country } or null.
+  function lookupPostal(code, key) {
+    code = String(code || '').trim();
+    var us = /^(\d{5})(?:-\d{4})?$/.exec(code), ca = CA_POSTAL.exec(code);
+    if ((!us && !ca) || typeof fetch === 'undefined') return Promise.resolve(null);
+    var country = us ? 'US' : 'CA';
+    var free = function () {
+      return fetchJson('https://api.zippopotam.us/' + (us ? 'us/' + us[1] : 'ca/' + ca[1].toUpperCase())).then(function (j) {
+        var p = j && j.places && j.places[0];
+        if (!p) return null;
+        return { city: String(p['place name'] || '').replace(/\s*\(.*\)\s*$/, '').trim(), state: String(p['state abbreviation'] || '').toUpperCase(), country: country };
+      }).catch(function () { return null; });
+    };
+    if (!key) return free();
+    return fetchJson(GEO + '&type=postcode&limit=1&filter=countrycode:' + country.toLowerCase() + '&text=' + encodeURIComponent(us ? us[1] : fixPostal(code)) + '&apiKey=' + encodeURIComponent(key))
+      .then(function (j) {
+        var r = j && j.results && j.results[0];
+        return r && r.city ? { city: r.city, state: String(r.state_code || '').toUpperCase(), country: country } : null;
+      }).catch(function () { return null; }).then(function (r) { return r || free(); });
+  }
+  // Address suggestions in the US and Canada from Geoapify (needs a key).
+  // Resolves to [{ label, sub, street, city, state, zip, country }]; rejects
+  // with err.status 401/403 for a bad key, 429 when the day's lookups are used up.
+  function suggestAddresses(text, key) {
+    return fetchJson(GEO + '&limit=5&filter=countrycode:us,ca&text=' + encodeURIComponent(text) + '&apiKey=' + encodeURIComponent(key)).then(function (j) {
+      return ((j && j.results) || []).filter(function (r) { return r.street || r.address_line1; }).map(function (r) {
+        var country = String(r.country_code || '').toUpperCase() === 'CA' ? 'CA' : 'US';
+        var street = r.street ? [r.housenumber, r.street].filter(Boolean).join(' ') : String(r.address_line1 || '');
+        return {
+          label: r.address_line1 || street, sub: r.address_line2 || '', street: street, city: r.city || '',
+          state: String(r.state_code || '').toUpperCase(), zip: country === 'CA' ? fixPostal(r.postcode) : String(r.postcode || ''), country: country
+        };
+      });
+    });
   }
 
   // Label content (a flat OOXML package) that is nothing but a table, as
@@ -353,7 +431,8 @@
     parseDelimited: parseDelimited, readXlsx: readXlsx, parseVCard: parseVCard,
     headerMap: headerMap, rowsToAddresses: rowsToAddresses, addressLines: addressLines, fixZip: fixZip, linesToFields: linesToFields,
     fontCss: fontCss, textHeight: textHeight, fits: fits, fitScale: fitScale, findLabelBorder: findLabelBorder,
-    unwrapTable: unwrapTable, FIELDS: FIELDS
+    unwrapTable: unwrapTable, countryOf: countryOf, fixPostal: fixPostal, lookupPostal: lookupPostal, suggestAddresses: suggestAddresses,
+    FIELDS: FIELDS, PROVINCES: PROVINCES
   };
   root.LSK_TOOLS = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

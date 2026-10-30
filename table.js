@@ -10,7 +10,7 @@
 
   var T = window.LSK_TOOLS;
   var COLS = ['name', 'company', 'street', 'apt', 'city', 'state', 'zip'];
-  var DRAFT = 'lsk.tableDraft', INFO = 'lsk.tableInfo', BOOK = 'lsk.addressBook';
+  var DRAFT = 'lsk.tableDraft', INFO = 'lsk.tableInfo', BOOK = 'lsk.addressBook', GEO_KEY = 'lsk.geoKey';
   var rowsEl = document.getElementById('rows');
 
   function $(id) { return document.getElementById(id); }
@@ -122,8 +122,102 @@
     msg('Pasted ' + plural(grid.length, 'row') + '.');
   });
 
-  // Enter moves down a row, like a spreadsheet.
+  // ---------- filling in addresses ----------
+  function geoKey() { return store(GEO_KEY) || ''; }
+  function cellOf(tr, field) { return tr.querySelectorAll('input')[COLS.indexOf(field)]; }
+  function setIfEmpty(inp, v) { if (inp && v && !inp.value.trim()) inp.value = v; }
+
+  // A ZIP or postal code fills in an empty City and State/Prov.
+  var postalTimer = 0;
+  function postalChanged(inp) {
+    clearTimeout(postalTimer);
+    var tr = inp.closest('tr'), code = inp.value.trim();
+    if (!/^\d{5}(-\d{4})?$|^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/.test(code)) return;
+    if (cellOf(tr, 'city').value.trim() && cellOf(tr, 'state').value.trim()) return;
+    postalTimer = setTimeout(function () {
+      T.lookupPostal(code, geoKey()).then(function (r) {
+        if (!r || inp.value.trim() !== code) return;
+        setIfEmpty(cellOf(tr, 'city'), r.city); setIfEmpty(cellOf(tr, 'state'), r.state);
+        if (/^[A-Za-z]/.test(code)) inp.value = T.fixPostal(code);
+        update();
+      });
+    }, 350);
+  }
+
+  // Address suggestions while typing a street (with a Geoapify key).
+  var sugg = $('sugg'), suggList = $('sugg-list'), suggFor = null, suggItems = [], suggActive = -1, suggTimer = 0, suggSeq = 0, keyTrouble = false;
+  function closeSugg() { sugg.hidden = true; suggFor = null; suggItems = []; suggActive = -1; }
+  function showSugg(inp, items) {
+    suggList.innerHTML = '';
+    suggItems = items; suggActive = -1; suggFor = inp;
+    if (!items.length) { closeSugg(); return; }
+    items.forEach(function (it, i) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('role', 'option'); b.tabIndex = -1;
+      b.textContent = it.label;
+      var sm = document.createElement('small'); sm.textContent = it.sub; b.appendChild(sm);
+      b.addEventListener('mousedown', function (e) { e.preventDefault(); chooseSugg(i); });
+      suggList.appendChild(b);
+    });
+    var r = inp.getBoundingClientRect();
+    sugg.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 300)) + 'px';
+    sugg.style.top = (r.bottom + 2) + 'px';
+    sugg.hidden = false;
+  }
+  function markSugg(i) {
+    suggActive = i;
+    Array.prototype.forEach.call(suggList.children, function (b, j) { b.setAttribute('aria-selected', j === i ? 'true' : 'false'); });
+  }
+  function chooseSugg(i) {
+    var it = suggItems[i], inp = suggFor;
+    if (!it || !inp) return;
+    var tr = inp.closest('tr');
+    inp.value = it.street;
+    cellOf(tr, 'city').value = it.city;
+    cellOf(tr, 'state').value = it.state;
+    cellOf(tr, 'zip').value = it.zip;
+    closeSugg();
+    update();
+    cellOf(tr, 'apt').focus();
+  }
+  function streetChanged(inp) {
+    clearTimeout(suggTimer);
+    var key = geoKey(), text = inp.value.trim();
+    if (!key || keyTrouble || text.length < 4 || !/\d/.test(text) || !/[a-z]/i.test(text)) { if (suggFor === inp) closeSugg(); return; }
+    suggTimer = setTimeout(function () {
+      var tr = inp.closest('tr'), city = cellOf(tr, 'city').value.trim(), state = cellOf(tr, 'state').value.trim();
+      var seq = ++suggSeq;
+      T.suggestAddresses([text, city, state].filter(Boolean).join(', '), key).then(function (items) {
+        if (seq === suggSeq && document.activeElement === inp) showSugg(inp, items);
+      }).catch(function (e) {
+        if (e && (e.status === 401 || e.status === 403)) { keyTrouble = true; msg('Geoapify didn’t accept the key. Check it in the panel’s Settings.', true); }
+        else if (e && e.status === 429) { keyTrouble = true; msg('Today’s free address suggestions are used up. They come back tomorrow.', true); }
+      });
+    }, 350);
+  }
+  rowsEl.addEventListener('input', function (e) {
+    var inp = e.target;
+    if (inp.tagName !== 'INPUT') return;
+    var field = inp.getAttribute('aria-label');
+    if (field === 'zip') postalChanged(inp);
+    else if (field === 'street') streetChanged(inp);
+  });
+  rowsEl.addEventListener('focusout', function (e) { if (e.target === suggFor) setTimeout(function () { if (document.activeElement !== suggFor) closeSugg(); }, 120); });
+  $('grid').parentNode.addEventListener('scroll', closeSugg);
+  window.addEventListener('resize', closeSugg);
+
+  // Arrow keys and Enter pick a suggestion; otherwise Enter moves down a row, like a spreadsheet.
   rowsEl.addEventListener('keydown', function (e) {
+    if (!sugg.hidden && e.target === suggFor) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        var n = suggItems.length;
+        markSugg(e.key === 'ArrowDown' ? (suggActive + 1) % n : (suggActive + n - 1) % n);
+        return;
+      }
+      if (e.key === 'Enter' && suggActive >= 0) { e.preventDefault(); chooseSugg(suggActive); return; }
+      if (e.key === 'Escape') { e.preventDefault(); closeSugg(); return; }
+    }
     if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
     e.preventDefault();
     var tr = e.target.closest('tr'), col = Array.prototype.indexOf.call(tr.querySelectorAll('input'), e.target);
@@ -198,7 +292,8 @@
   // ---------- start ----------
   function start() {
     var info = json(INFO) || {};
-    $('info').textContent = (info.name ? info.name + '. ' : '') + 'One row per label; the first column shows which label. Type addresses, paste cells from Excel or Numbers, or open a file.';
+    $('info').textContent = (info.name ? info.name + '. ' : '') + 'One row per label; the first column shows which label. Type addresses, paste cells from Excel or Numbers, or open a file. ' +
+      (geoKey() ? 'Type a street for address suggestions.' : 'A ZIP or postal code fills in the city.');
     var draft = json(DRAFT);
     setRows(Array.isArray(draft) ? draft : []);
     fillBookPicker();
