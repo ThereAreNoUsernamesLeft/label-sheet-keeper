@@ -689,6 +689,7 @@
           if (s.pic) {
             var img = para.insertInlinePictureFromBase64(s.pic.b64, 'Start');
             img.width = s.pic.w; img.height = s.pic.h;
+            if (s.pic.alt) img.altTextDescription = s.pic.alt;
             para.alignment = alignOf(s.pic.align);
             para.spaceBefore = topPt; para.spaceAfter = 2; para.leftIndent = 0;
             return;
@@ -1194,7 +1195,7 @@
       return;
     }
     var take = ship.waiting.slice(0, open.length);
-    var items = take.map(function (it, i) { return { n: open[i], paras: [], pic: { b64: it.b64, w: it.w, h: it.h, align: 'center' } }; });
+    var items = take.map(function (it, i) { return { n: open[i], paras: [], pic: { b64: it.b64, w: it.w, h: it.h, align: 'center', alt: 'Shipping label' } }; });
     queueChange(function () { return writeEach(items); }).then(refresh).then(function () {
       ship.waiting = ship.waiting.slice(take.length);
       renderWaiting();
@@ -1475,7 +1476,8 @@
     if (o.kind === 'none') return { paras: paras, label: lab };
     var pic = codePicture(o.kind, lab.data, f, lab.text ? size : 0);
     if (pic.problem) return { problem: pic.problem, label: lab };
-    return { paras: paras, pic: { b64: pic.canvas.toDataURL('image/png').split(',')[1], w: pic.w, h: pic.h, align: 'center' }, label: lab, canvas: pic.canvas };
+    var alt = (o.kind === 'qr' ? 'QR code: ' : 'Barcode: ') + lab.data;
+    return { paras: paras, pic: { b64: pic.canvas.toDataURL('image/png').split(',')[1], w: pic.w, h: pic.h, align: 'center', alt: alt }, label: lab, canvas: pic.canvas };
   }
   var codesShown = false;
   function renderCodes() {
@@ -2564,7 +2566,7 @@
       var n = nextOpen();
       if (!n) { say('There are no open labels on this sheet.', 'warn'); return; }
       var out = output(), b64 = out.canvas.toDataURL('image/png').split(',')[1];
-      queueChange(function () { return writeLabels([n], [], { b64: b64, w: out.wIn * 72, h: out.hIn * 72, align: 'center' }); }).then(refresh).then(function () {
+      queueChange(function () { return writeLabels([n], [], { b64: b64, w: out.wIn * 72, h: out.hIn * 72, align: 'center', alt: 'Shipping label' }); }).then(refresh).then(function () {
         say('Placed on ' + theName(n) + '. Print with ⌘P.');
       });
     });
