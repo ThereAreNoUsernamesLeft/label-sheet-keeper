@@ -123,6 +123,7 @@
   });
 
   // ---------- filling in addresses ----------
+  var keyTrouble = false;   // the Geoapify key was rejected or is out of lookups: use Photon
   function geoKey() { return keyTrouble ? '' : (store(GEO_KEY) || ''); }
   function suggestOn() { return store(SUGGEST) !== 'off'; }
   function cellOf(tr, field) { return tr.querySelectorAll('input')[COLS.indexOf(field)]; }
@@ -148,7 +149,7 @@
   // Address suggestions while typing a street: Photon (free), or Geoapify
   // with the user's own key.
   var sugg = $('sugg'), suggList = $('sugg-list'), suggFor = null, suggItems = [], suggActive = -1, suggTimer = 0, suggSeq = 0;
-  var keyTrouble = false, pausedUntil = 0, cache = {};
+  var pausedUntil = 0, cache = {};
   var CREDITS = {
     photon: [['Photon by Komoot', 'https://photon.komoot.io/'], ['© OpenStreetMap contributors', 'https://www.openstreetmap.org/copyright']],
     geoapify: [['Powered by Geoapify', 'https://www.geoapify.com/'], ['© OpenStreetMap contributors', 'https://www.openstreetmap.org/copyright']]
