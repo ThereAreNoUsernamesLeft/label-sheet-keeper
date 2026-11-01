@@ -545,21 +545,28 @@
       .sort(function (a, b) { return a.fmtName < b.fmtName ? -1 : a.fmtName > b.fmtName ? 1 : b.at - a.at; });
   }
   function forgetSheet(id) { var reg = registry(); delete reg[id]; storeJson(LS.sheets, reg); }
-  // Opens a saved sheet. Resolves true, or false after taking a sheet that
-  // can't be opened (moved or deleted) off the list.
+  // Opens a saved sheet (Word asks you to allow it first). Resolves true, or
+  // false if it didn't open; a sheet whose file is gone comes off the list.
+  var lastOpenGone = false;
   function tryOpenSheet(entry) {
+    lastOpenGone = false;
     if (!entry.url) return Promise.resolve(false);
     return Word.run(function (ctx) {
       if (typeof ctx.application.openDocument !== 'function') throw new Error('no openDocument');
       ctx.application.openDocument(entry.url);
       return ctx.sync();
-    }).then(function () { return true; }, function () { forgetSheet(entry.id); return false; });
+    }).then(function () { return true; }, function (e) {
+      var why = ((e && e.code) || '') + ' ' + ((e && e.message) || '');
+      if (/not.?found|exist|missing|ItemNotFound|FileNotFound/i.test(why)) { lastOpenGone = true; forgetSheet(entry.id); }
+      return false;
+    });
   }
   function openSheetFile(entry) {
     tryOpenSheet(entry).then(function (ok) {
       if (ok) return;
       render();
-      say('Word couldn’t open “' + (entry.file || 'that sheet') + '”, so it’s off the list. If you moved it, open it in Word and it comes back.', 'warn');
+      say(lastOpenGone ? 'Word couldn’t find “' + (entry.file || 'that sheet') + '”, so it’s off the list. If you moved it, open it in Word and it comes back.'
+        : 'Word didn’t open “' + (entry.file || 'that sheet') + '”. Open it from File › Open Recent, or click Remove if you don’t need it.', 'warn');
     });
   }
   function renderSheetList(ul, entries, showCurrent) {
@@ -906,7 +913,7 @@
     job.next = e.id; job.at = Date.now();
     storeJson(LS.fillJob, job);
     return tryOpenSheet(e).then(function (ok) {
-      if (ok) return 'opening “' + (e.file || 'your other sheet') + '” for the other ' + plural(n, 'label') + '. Its panel fills them. If the panel doesn’t open there, click Label Sheet on its Home tab.';
+      if (ok) return 'opened “' + (e.file || 'your other sheet') + '” for the other ' + plural(n, 'label') + '; its panel fills them. If the panel doesn’t open there, click Label Sheet on its Home tab.';
       job.done.push(e.id);
       return passJobOn(f, job);
     });
