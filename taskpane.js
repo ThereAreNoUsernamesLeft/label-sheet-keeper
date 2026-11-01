@@ -2495,7 +2495,10 @@
     $('stock-save').addEventListener('click', function () {
       var f = st.fmt, num = function (id) { var v = $(id).value.trim(); return v === '' ? null : Math.round(Number(v)); };
       var on = num('stock-on'), pack = num('stock-pack'), warn = num('stock-warn'), packs = num('stock-packs'), link = $('stock-link').value.trim();
-      if (on === null && !link) { say('Enter how many sheets you have now, or a link to where you buy them.', 'warn'); $('stock-on').focus(); return; }
+      if (on === null && !link) {
+        if (storeJson(LS.stock + f.id)) { storeJson(LS.stock + f.id, null); render(); say('Cleared the label stock for this size.'); return; }
+        say('Enter how many sheets you have now, or a link to where you buy them.', 'warn'); $('stock-on').focus(); return;
+      }
       if ((on !== null && !(on >= 0 && on <= 9999)) || (pack !== null && !(pack >= 1 && pack <= 9999)) || (warn !== null && !(warn >= 0 && warn <= 9999)) || (packs !== null && !(packs >= 1 && packs <= 99))) {
         say('Check the numbers: whole numbers only, and at least 1 sheet in a pack.', 'warn'); return;
       }
