@@ -102,7 +102,28 @@
   function settings() { try { return Office.context.document.settings; } catch (e) { return null; } }
   function getSetting(k) { var s = settings(); try { return s ? s.get(k) : null; } catch (e) { return null; } }
   function setSetting(k, v) { var s = settings(); try { if (s) { s.set(k, v); s.saveAsync(function () {}); } } catch (e) { /* ignore */ } }
-  function docUrl() { try { return Office.context.document.url || ''; } catch (e) { return ''; } }
+  // Where the document is saved. Word gives the address it had when the panel
+  // opened; the file properties are asked again every few seconds, so a sheet
+  // saved later gets its address too.
+  var liveUrl = null, urlAsked = 0;
+  function docUrl() {
+    if (liveUrl !== null) return liveUrl;
+    try { return Office.context.document.url || ''; } catch (e) { return ''; }
+  }
+  function refreshUrl() {
+    if (Date.now() - urlAsked < 4000) return;
+    urlAsked = Date.now();
+    try {
+      Office.context.document.getFilePropertiesAsync(function (r) {
+        if (r.status !== Office.AsyncResultStatus.Succeeded || !r.value) return;
+        liveUrl = r.value.url || '';
+        if (st.kind !== 'sheet') return;
+        var mine = registry()[getSetting(DOC.id)];
+        if (mine && mine.url !== liveUrl) updateRegistry();
+        showSaveHint();
+      });
+    } catch (e) { /* older Word: keep the address from when the panel opened */ }
+  }
   function fileName(url) {
     url = url || docUrl();
     if (!url) return '';
@@ -224,6 +245,7 @@
   var saveTimer = 0, needsFirstSave = false;
   // A document that has never been saved is left alone, because saving it
   // would ask for a name; the panel shows a reminder instead.
+  function showSaveHint() { $('save-hint').hidden = !(needsFirstSave && !docUrl()); }
   function autosave() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
@@ -500,7 +522,11 @@
     storeJson(LS.sheets, reg);
     lastCheckIn = Date.now();
   }
-  function checkIn() { if (st.kind === 'sheet' && Date.now() - lastCheckIn > 60000) updateRegistry(); }
+  function checkIn() {
+    if (st.kind !== 'sheet') return;
+    refreshUrl();
+    if (Date.now() - lastCheckIn > 60000) updateRegistry();
+  }
   function forgetIfUnsaved() {
     var id = getSetting(DOC.id);
     if (st.kind !== 'sheet' || !id || docUrl()) return;
@@ -1854,7 +1880,7 @@
     $('first-n').max = String(total());
     renderFill();
     renderPrint();
-    $('save-hint').hidden = !(needsFirstSave && !docUrl());
+    showSaveHint();
     var entries = sheetEntries(false);
     $('sheets-count').textContent = entries.length;
     renderSheetList($('sheets-list'), entries, true);
