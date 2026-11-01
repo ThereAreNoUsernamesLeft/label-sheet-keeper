@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.5';
+  var VERSION = '1.6';
   var ADDIN_ID = '8d491c85-a76d-4d26-a6f5-b7b2dd4a1711';   // must match manifest.xml <Id>
   var F = window.LSK_FORMATS;
   var S = window.LSK_SHEET;
@@ -487,30 +487,53 @@
 
   // ---------- your sheets (kept on this Mac) ----------
   function registry() { return storeJson(LS.sheets) || {}; }
+  // A sheet that was never saved can't be opened again once it's closed, so
+  // it drops off the list: when its panel closes, or when nothing has been
+  // heard from it for a while (an open sheet's panel checks in every minute).
+  var UNSAVED_LIFE = 10 * 60000, lastCheckIn = 0;
   function updateRegistry() {
     var id = getSetting(DOC.id);
     if (!id || !st.fmt) return;
     var reg = registry(), open = openList().length, ready = keys(st.ready).length;
     if (!open && !ready) delete reg[id];
-    else reg[id] = { id: id, fmtId: st.fmt.id, fmtName: st.fmt.name, file: fileName(), url: docUrl(), open: open, ready: ready, trips: trips(), at: Date.now() };
+    else reg[id] = { id: id, fmtId: st.fmt.id, fmtName: st.fmt.name, file: fileName(), url: docUrl(), open: open, ready: ready, trips: trips(), at: Date.now(), seen: Date.now() };
     storeJson(LS.sheets, reg);
+    lastCheckIn = Date.now();
+  }
+  function checkIn() { if (st.kind === 'sheet' && Date.now() - lastCheckIn > 60000) updateRegistry(); }
+  function forgetIfUnsaved() {
+    var id = getSetting(DOC.id);
+    if (st.kind !== 'sheet' || !id || docUrl()) return;
+    var reg = registry();
+    if (reg[id]) { delete reg[id]; storeJson(LS.sheets, reg); }
   }
   function sheetEntries(exceptCurrent) {
-    var reg = registry(), me = getSetting(DOC.id);
+    var reg = registry(), me = getSetting(DOC.id), now = Date.now(), dropped = false;
+    Object.keys(reg).forEach(function (k) {
+      var e = reg[k];
+      if (e && !e.url && e.id !== me && now - (e.seen || e.at || 0) > UNSAVED_LIFE) { delete reg[k]; dropped = true; }
+    });
+    if (dropped) storeJson(LS.sheets, reg);
     return Object.keys(reg).map(function (k) { return reg[k]; })
       .filter(function (e) { return e && (e.open > 0 || e.ready > 0) && !(exceptCurrent && e.id === me); })
       .sort(function (a, b) { return a.fmtName < b.fmtName ? -1 : a.fmtName > b.fmtName ? 1 : b.at - a.at; });
   }
+  function forgetSheet(id) { var reg = registry(); delete reg[id]; storeJson(LS.sheets, reg); }
+  // Opens a saved sheet. Resolves true, or false after taking a sheet that
+  // can't be opened (moved or deleted) off the list.
+  function tryOpenSheet(entry) {
+    if (!entry.url) return Promise.resolve(false);
+    return Word.run(function (ctx) {
+      if (typeof ctx.application.openDocument !== 'function') throw new Error('no openDocument');
+      ctx.application.openDocument(entry.url);
+      return ctx.sync();
+    }).then(function () { return true; }, function () { forgetSheet(entry.id); return false; });
+  }
   function openSheetFile(entry) {
-    queue(function () {
-      return Word.run(function (ctx) {
-        if (!entry.url || typeof ctx.application.openDocument !== 'function') throw userError('Open “' + (entry.file || 'that sheet') + '” from File › Open Recent in Word.');
-        ctx.application.openDocument(entry.url);
-        return ctx.sync();
-      }).catch(function (e) {
-        if (e && e.userMessage) throw e;
-        throw userError('Word couldn’t open it from here. Open “' + (entry.file || 'that sheet') + '” from File › Open Recent.');
-      });
+    tryOpenSheet(entry).then(function (ok) {
+      if (ok) return;
+      render();
+      say('Word couldn’t open “' + (entry.file || 'that sheet') + '”, so it’s off the list. If you moved it, open it in Word and it comes back.', 'warn');
     });
   }
   function renderSheetList(ul, entries, showCurrent) {
@@ -521,13 +544,14 @@
       li.appendChild(el('b', '', e.fmtName));
       var t = Math.min(e.trips || 0, limit);
       li.appendChild(el('span', 'meta', plural(e.open, 'open label') + (e.ready ? ' · ' + e.ready + ' ready to print' : '') +
-        ' · ' + t + ' of ' + limit + ' trips · ' + (showCurrent && e.id === me ? 'this sheet' : (e.file || 'not saved yet') + ' · ' + fmtDay(e.at))));
+        ' · ' + t + ' of ' + limit + ' trips · ' + (showCurrent && e.id === me ? 'this sheet' : e.url ? (e.file || 'saved') + ' · ' + fmtDay(e.at) : 'open in Word, not saved yet')));
       var acts = el('span', 'acts');
       if (!(showCurrent && e.id === me)) {
         var open = el('button', 'btn ghost sm', 'Open'); open.type = 'button';
         open.addEventListener('click', function () { openSheetFile(e); });
+        open.hidden = !e.url;
         var x = el('button', 'btn link', 'Remove'); x.type = 'button'; x.title = 'Remove from this list';
-        x.addEventListener('click', function () { var reg = registry(); delete reg[e.id]; storeJson(LS.sheets, reg); render(); });
+        x.addEventListener('click', function () { forgetSheet(e.id); render(); });
         acts.appendChild(open); acts.appendChild(x);
       }
       li.appendChild(acts);
@@ -706,22 +730,41 @@
   }
 
   // Mark every ready-to-print label used: one more trip for the sheet.
+  // A label's text and its look, compact enough to keep in the print history
+  // so an older print can be undone. Labels with a picture keep nothing.
+  var SNAP_PROPS = 'items/text,items/alignment,items/leftIndent,items/spaceBefore,items/font/name,items/font/size,items/font/bold,items/font/italic,items/font/color';
+  function snapParas(items) {
+    return items.map(function (q) {
+      var a = String(q.alignment || '').toLowerCase(), p = { t: q.text, size: q.font.size || undefined, align: a === 'centered' ? 'center' : a === 'right' ? 'right' : 'left' };
+      if (q.font.bold) p.b = true;
+      if (q.font.italic) p.i = true;
+      if (q.font.name) p.font = q.font.name;
+      if (q.font.color && !/^#0{6}$/i.test(q.font.color)) p.color = q.font.color;
+      if (q.leftIndent) p.indent = q.leftIndent;
+      p.before = q.spaceBefore || 0;
+      return p;
+    });
+  }
+  var KEEP_SNAPS = 8;   // newest prints that can be undone with their text
   function markPrinted() {
-    var nums = keys(st.ready), firstTrip = trips() === 0;
+    var nums = keys(st.ready), firstTrip = trips() === 0, snaps = {};
     return Word.run(function (ctx) {
       var gets = nums.map(function (n) { return grabContent(cellBody(ctx, n)); });
+      var lists = nums.map(function (n) { if (st.pics[n]) return null; var ps = cellBody(ctx, n).paragraphs; ps.load(SNAP_PROPS); return ps; });
       return ctx.sync().then(function () {
         undo = { nums: nums, cells: nums.map(function (n, i) { return { n: n, c: gets[i]() }; }), at: Date.now() };
+        nums.forEach(function (n, i) { if (lists[i]) snaps[n] = snapParas(lists[i].items); });
         return lockAsUsed(ctx, nums);
       });
     }).then(function () {
       var at = undo.at, texts = [];
       nums.forEach(function (n) { var t = firstLine(st.texts[n]); if (t && texts.indexOf(t) < 0) texts.push(t); });
+      undo.stock = firstTrip && takeFromStock(st.fmt);
       var h = history();
-      h.unshift({ at: at, nums: nums, text: texts.length ? texts[0] + (texts.length > 1 ? ' and ' + plural(texts.length - 1, 'other') : '') : '' });
+      h.unshift({ at: at, nums: nums, text: texts.length ? texts[0] + (texts.length > 1 ? ' and ' + plural(texts.length - 1, 'other') : '') : '', stock: undo.stock || undefined, labels: snaps });
+      h.forEach(function (e, i) { if (i >= KEEP_SNAPS) delete e.labels; });
       setSetting(DOC.history, h.slice(0, 200));
       setSetting(DOC.trips, trips() + 1);
-      undo.stock = firstTrip && takeFromStock(st.fmt);
       setSpots(nums, function (n) { return { at: at, t: firstLine(st.texts[n]) }; });
       // Keep the last label for "Reprint last label".
       var last = undo.cells[undo.cells.length - 1];
@@ -744,6 +787,26 @@
       if (u.stock) putBackInStock(st.fmt);
       setSpots(u.nums, null);
       undo = null;
+    });
+  }
+
+  // Undoing an older print from the history: its labels must still be used
+  // by that print (not reset or marked again since).
+  function canUndoPrint(e) {
+    var sp = spots();
+    return !!(e && e.nums && e.nums.length) && e.nums.every(function (n) { return st.used[n] && sp[n] && sp[n].at === e.at; });
+  }
+  function undoPrint(e) {
+    if (undo && undo.at === e.at) return undoPrinted();
+    var items = e.nums.filter(function (n) { return e.labels && e.labels[n]; }).map(function (n) { return { n: n, paras: e.labels[n] }; });
+    return Word.run(function (ctx) { return unlock(ctx, e.nums); }).then(function () {
+      return items.length ? writeEach(items) : null;
+    }).then(function () {
+      setSetting(DOC.history, history().filter(function (x) { return x.at !== e.at; }));
+      setSetting(DOC.trips, Math.max(0, trips() - 1));
+      if (e.stock) putBackInStock(st.fmt);
+      setSpots(e.nums, null);
+      return items.length;
     });
   }
 
@@ -795,11 +858,36 @@
       .sort(function (a, b) { return b.open - a.open; });
   }
   function roomOn(list) { return list.reduce(function (a, e) { return a + e.open; }, 0); }
-  function startFillJob(f, items, others) {
-    var job = { id: uid(), fmtId: f.id, at: Date.now(), items: items, sheets: others.map(function (e) { return e.id; }), next: others[0].id, done: [getSetting(DOC.id)] };
+  function nextJobSheet(job) {
+    var reg = registry(), lim = tripLimit();
+    for (var i = 0; i < job.sheets.length; i++) {
+      var e = reg[job.sheets[i]];
+      if (job.done.indexOf(job.sheets[i]) < 0 && e && e.url && e.open > 0 && (e.trips || 0) < lim) return e;
+    }
+    return null;
+  }
+  // Sends what's left of the list on: to the next sheet Word can open, or onto
+  // new sheets when there's none. Resolves with what happened, in words.
+  function passJobOn(f, job) {
+    var e = nextJobSheet(job), n = job.items.length;
+    if (!e) {
+      storeJson(LS.fillJob, null);
+      var sheets = Math.ceil(n / (f.across * f.down));
+      return queue(function () { return createSheets(f, spillPrefills(f, job.items)); }).then(function () {
+        return 'made ' + plural(sheets, 'new sheet') + ' for the other ' + plural(n, 'label') + '. ' + (sheets === 1 ? 'It opened in its own window.' : 'They opened in their own windows.');
+      });
+    }
+    job.next = e.id; job.at = Date.now();
     storeJson(LS.fillJob, job);
-    openSheetFile(others[0]);
-    return others[0];
+    return tryOpenSheet(e).then(function (ok) {
+      if (ok) return 'opening “' + (e.file || 'your other sheet') + '” for the other ' + plural(n, 'label') + '. Its panel fills them. If the panel doesn’t open there, click Label Sheet on its Home tab.';
+      job.done.push(e.id);
+      return passJobOn(f, job);
+    });
+  }
+  function startFillJob(f, items, others) {
+    var job = { id: uid(), fmtId: f.id, at: Date.now(), items: items, sheets: others.map(function (e) { return e.id; }), next: null, done: [getSetting(DOC.id)] };
+    return passJobOn(f, job);
   }
   var jobRunning = false;
   function checkFillJob() {
@@ -812,22 +900,15 @@
     jobRunning = true;
     var open = openList(), take = job.items.slice(0, open.length), rest = job.items.slice(take.length);
     var items = take.map(function (paras, i) { return { n: open[i], paras: paras }; }), nums = items.map(function (it) { return it.n; });
-    job.done = (job.done || []).concat([me]);
-    var reg = registry(), lim = tripLimit();
-    var nextId = rest.length ? job.sheets.filter(function (id) {
-      var e = reg[id]; return job.done.indexOf(id) < 0 && e && e.url && e.open > 0 && (e.trips || 0) < lim;
-    })[0] : null;
     // Claim these labels before writing, so no other panel fills them too.
-    if (nextId) { job.items = rest; job.next = nextId; job.at = Date.now(); storeJson(LS.fillJob, job); } else storeJson(LS.fillJob, null);
+    job.done = (job.done || []).concat([me]);
+    job.items = rest; job.next = null; job.at = Date.now();
+    storeJson(LS.fillJob, rest.length ? job : null);
     var here = nums.length ? 'Filled ' + labelList(nums) + ' with labels from your list' : 'This sheet had no open labels left';
     var fill = items.length ? queueChange(function () { return writeEach(items); }).then(refresh) : Promise.resolve();
     fill.then(function () {
       if (!rest.length) { say(here + '. That was the last of them.'); return null; }
-      if (nextId) { say(here + '. Opening “' + (reg[nextId].file || 'your next sheet') + '” for the other ' + plural(rest.length, 'label') + '.'); openSheetFile(reg[nextId]); return null; }
-      var sheets = Math.ceil(rest.length / total());
-      return queue(function () { return createSheets(f, spillPrefills(f, rest)); }).then(function () {
-        say(here + '. Made ' + plural(sheets, 'new sheet') + ' for the other ' + plural(rest.length, 'label') + '. ' + (sheets === 1 ? 'It opened in its own window.' : 'They opened in their own windows.'));
-      });
+      return passJobOn(f, job).then(function (msg) { say(here + '. ' + cap(msg)); });
     }).then(function () { jobRunning = false; });
   }
   // The question to ask when labels don't all fit on this sheet.
@@ -851,10 +932,7 @@
     var which = others.length === 1 ? 'Your other sheet of this size has ' : 'Your other ' + others.length + ' sheets of this size have ';
     ask(lead + which + plural(room, 'open label') + '. Put the other ' + noun + ' there first' + (room < count ? ', and the rest on new sheets' : '') + '?',
       'Fill my other sheets first', function () {
-        fillHere().then(function () {
-          var first = startFillJob(f, extra, others);
-          done('opening “' + (first.file || 'your other sheet') + '” for the other ' + noun + '. Its panel fills them. If the panel doesn’t open there, click Label Sheet on its Home tab.');
-        });
+        fillHere().then(function () { return startFillJob(f, extra, others); }).then(done);
       }, false, { label: 'Make new sheets', action: makeNew });
   }
 
@@ -971,6 +1049,7 @@
   }
   function checkPrinted() {
     checkFillJob();
+    checkIn();
     if (busy || st.kind !== 'sheet') return;
     readPrintTime().then(function (ms) {
       if (lastPrintSeen === null) {
@@ -1347,6 +1426,9 @@
 
   // ---------- addresses ----------
   function book() { var b = storeJson(LS.book); return Array.isArray(b) ? b : []; }
+  // A saved address being changed in the address book list. Kept across
+  // redraws so a refresh doesn't lose what's being typed.
+  var bookEdit = null;   // { id, text }
   function addToBook(list) {
     var b = book(), seen = {}, added = 0;
     b.forEach(function (e) { seen[e.lines.join('\n').toLowerCase()] = true; });
@@ -2003,12 +2085,44 @@
     var ul = $('book-list'); ul.innerHTML = '';
     if (!b2.length) ul.appendChild(el('li', '', 'No saved addresses yet.'));
     b2.forEach(function (e) {
-      var li = el('li'), span = el('span', '', e.lines.join(', '));
-      span.title = e.lines.join('\n');
+      var li = el('li');
+      if (bookEdit && bookEdit.id === e.id) { li.className = 'editing'; li.appendChild(bookEditor(e)); ul.appendChild(li); return; }
+      var name = el('button', 'addr', e.lines.join(', ')); name.type = 'button';
+      name.title = e.lines.join('\n') + '\n\nClick to edit';
+      name.setAttribute('aria-label', 'Edit ' + e.name);
+      name.addEventListener('click', function () { bookEdit = { id: e.id, text: e.lines.join('\n') }; renderAddress(); var ta = $('book-edit'); ta.focus(); });
       var x = el('button', '', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Delete ' + e.name);
       x.addEventListener('click', function () { storeJson(LS.book, book().filter(function (k) { return k.id !== e.id; })); renderAddress(); say('Deleted ' + e.name + ' from the address book.'); });
-      li.appendChild(span); li.appendChild(x); ul.appendChild(li);
+      li.appendChild(name); li.appendChild(x); ul.appendChild(li);
     });
+  }
+  function bookEditor(e) {
+    var box = el('div', 'book-edit');
+    var ta = document.createElement('textarea'); ta.id = 'book-edit'; ta.rows = Math.max(3, e.lines.length + 1); ta.spellcheck = false;
+    ta.value = bookEdit.text; ta.setAttribute('aria-label', 'Address for ' + e.name);
+    ta.addEventListener('input', function () { bookEdit.text = ta.value; });
+    ta.addEventListener('keydown', function (k) { if (k.key === 'Escape') { bookEdit = null; renderAddress(); } });
+    var row = el('div', 'row');
+    var save = el('button', 'btn primary sm', 'Save'); save.type = 'button';
+    save.addEventListener('click', function () { saveBookEdit(e.id); });
+    var cancel = el('button', 'btn ghost sm', 'Cancel'); cancel.type = 'button';
+    cancel.addEventListener('click', function () { bookEdit = null; renderAddress(); });
+    row.appendChild(save); row.appendChild(cancel);
+    box.appendChild(ta); box.appendChild(row);
+    return box;
+  }
+  function saveBookEdit(id) {
+    var lines = textLines(bookEdit && bookEdit.text);
+    if (!lines.length) { say('Type the address, or click × to delete it.', 'warn'); return; }
+    var key = lines.join('\n').toLowerCase(), b = book();
+    var same = b.filter(function (k) { return k.id !== id && k.lines.join('\n').toLowerCase() === key; })[0];
+    if (same) b = b.filter(function (k) { return k.id !== id; });
+    else b.forEach(function (k) { if (k.id === id) { k.lines = lines; k.name = lines[0]; } });
+    b.sort(function (x, y) { return x.name.localeCompare(y.name); });
+    storeJson(LS.book, b);
+    bookEdit = null;
+    renderAddress();
+    say(same ? 'That address was already in the address book, so the two are now one.' : 'Saved the changes to ' + lines[0] + '.');
   }
 
   function renderPrint() {
@@ -2104,10 +2218,30 @@
     if (!h.length) { ul.appendChild(el('li', 'txt', 'Nothing printed yet.')); return; }
     h.slice(0, 20).forEach(function (e) {
       var li = el('li');
-      li.appendChild(el('span', 'when', fmtDate(e.at)));
+      var top = el('div', 'hist-top');
+      top.appendChild(el('span', 'when', fmtDate(e.at)));
+      if (canUndoPrint(e)) {
+        var u = el('button', 'btn link', 'Undo'); u.type = 'button';
+        u.setAttribute('aria-label', 'Undo the print of ' + labelList(e.nums));
+        u.addEventListener('click', function () { askUndoPrint(e); });
+        top.appendChild(u);
+      }
+      li.appendChild(top);
       li.appendChild(el('span', '', cap(labelList(e.nums || []))));
       if (e.text) li.appendChild(el('span', 'txt', '“' + e.text + '”'));
       ul.appendChild(li);
+    });
+  }
+  function askUndoPrint(e) {
+    var exact = undo && undo.at === e.at;
+    var withText = exact || e.nums.some(function (n) { return e.labels && e.labels[n]; });
+    var lost = exact ? [] : e.nums.filter(function (n) { return !(e.labels && e.labels[n]); });
+    var what = cap(labelList(e.nums)) + (e.nums.length === 1 ? ' becomes' : ' become') + ' open again' + (withText ? ' with ' + (e.nums.length === 1 ? 'its' : 'their') + ' text back' : '');
+    var note = lost.length && withText ? ' Pictures and older labels (' + ranges(lost) + ') come back empty.' : !withText ? ' ' + (e.nums.length === 1 ? 'It comes' : 'They come') + ' back empty.' : '';
+    ask('Undo this print? ' + what + ', and the trip count goes down by one.' + note, 'Undo print', function () {
+      queueChange(function () { return undoPrint(e); }).then(refresh).then(function () {
+        say('Undone. ' + cap(labelList(e.nums)) + (e.nums.length === 1 ? ' is' : ' are') + ' open again' + (withText ? (lost.length ? ', with the text that could be kept.' : ' with ' + (e.nums.length === 1 ? 'its' : 'their') + ' text back.') : '.'));
+      });
     });
   }
 
@@ -2773,6 +2907,7 @@
       // Learn how Word attaches this add-in, so new sheets can open with the panel.
       findAddinRef().then(function () { if (st.kind === 'sheet') renderAbout(); });
       try { Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, onSelectionChanged); } catch (e) { /* older Word */ }
+      window.addEventListener('pagehide', forgetIfUnsaved);
       window.LSK_TEST = { st: function () { return st; }, ship: ship, output: output, handleFile: handleFile, fillFromRows: fillFromRows, checkPrinted: checkPrinted, checkFillJob: checkFillJob, scan: function () { return scanResult; } };
     });
   }

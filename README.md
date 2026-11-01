@@ -40,7 +40,7 @@ Point at an **ⓘ** in the panel for a short explanation of that tool.
 2. **Mark used labels:** click each label on the map that's already peeled off your sheet.
 3. **Fill labels:**
    - **Copy:** type a label in the document, leave the cursor in it, and click **Copy** or **Fill every open label**. **Fit text** shrinks text that's too big (never below a readable size); labels whose text may be cut off get a red outline on the map.
-   - **Address:** type an address or pick a saved one, choose a design (Plain, Bold name, Return to, With logo), and put it on the next open label or every open label.
+   - **Address:** type an address or pick a saved one, choose a design (Plain, Bold name, Return to, With logo), and put it on the next open label or every open label. In the **Address book**, click a saved address to change it.
    - **Table:** opens a bigger window like a small spreadsheet, with one row for each open label. The first column shows which label a row goes on. Type addresses, paste cells from Excel or Numbers, or open an Excel, CSV or contacts file. Rows past your open labels are marked "New sheet"; **Fill labels** puts them on new sheets, each in its own window.
    - **Numbers:** numbers labels in order ("Box 1 of 12", "BIN-007"), with a QR code or a Code 128 barcode under each if you like. Numbering picks up where you left off on the next sheet.
 4. **Print** with ⌘P at 100% scale. Feed the sheet top edge first, print side up, and choose **Labels** as the paper type. The panel notices the print and marks those labels used.
@@ -115,6 +115,12 @@ To restore, open the backup in Word and click **Restore these settings**, or cli
 
 **Your sheets** lists every sheet with labels left, with open labels and trips used. When you make a new sheet in a size you already have, the panel asks whether to finish the old one first.
 
+The list keeps itself tidy. A sheet that was never saved can't be reopened once it's closed, so it drops off by itself. A saved sheet that Word can't open any more (moved or deleted) comes off when you click **Open**; if you only moved it, open it in Word and it's listed again.
+
+### Print history and undo
+
+**Undo** under step 3 takes back the last "I printed these." Older prints can be undone from **Print history**, as long as their labels haven't been reset or marked again since. The labels become open again with their text back (the newest eight prints keep their text; pictures, such as shipping labels and QR codes, come back empty), and the trip count and label stock go back too.
+
 ### Repair
 
 If the label layout gets damaged (a row deleted, text typed above the labels, a table pasted inside a label), the panel says so. **Repair this sheet** rebuilds the layout and keeps used labels and labels ready to print.
@@ -131,6 +137,8 @@ If the label layout gets damaged (a row deleted, text typed above the labels, a 
 All of the panel's code lives in this repository. Change a file here, commit, and Word picks up the new version the next time the panel opens (the panel loads its files with a fresh address each time). Changes to `taskpane.html` or `table.html` themselves can take up to 10 minutes to show, because GitHub lets Word keep a copy of those pages for that long.
 
 You only need to touch `manifest.xml` on your Mac again if the add-in's name or web address changes.
+
+The version Word shows under the add-in's Security Info comes from `manifest.xml`, which is bumped with each release. With the copy installed on your Mac, it changes only when you copy the new `manifest.xml` there. Once the add-in is deployed for others through the Microsoft 365 admin center, uploading the new manifest (**Integrated apps › Update**) updates it for everyone; Microsoft says that can take up to 72 hours to reach every user.
 
 ## Files
 

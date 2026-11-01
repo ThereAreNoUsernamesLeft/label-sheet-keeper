@@ -225,3 +225,9 @@ ol.book-list li span::before{counter-increment:wait;content:counter(wait) ". ";c
 .steps code{font:11px var(--f-mono);overflow-wrap:anywhere}
 .steps .plain-list{padding-left:18px}
 .row.pair{display:grid;grid-template-columns:1fr auto;gap:8px}
+.book-list .addr{flex:1;min-width:0;background:none;border:0;padding:0;text-align:left;font:inherit;color:inherit;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.book-list .addr:hover{text-decoration:underline;text-underline-offset:2px}
+.book-list li.editing{display:block;padding:6px}
+.book-edit{display:grid;gap:6px}
+.hist-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.book-list .book-edit .btn{border-width:1px;border-style:solid;font-size:12.5px}
