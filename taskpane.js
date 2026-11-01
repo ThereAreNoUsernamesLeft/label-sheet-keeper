@@ -2465,8 +2465,14 @@
     $('stock-link').addEventListener('input', renderStockLink);
     // Numbers & codes
     ['num-text', 'num-start', 'num-count', 'num-total', 'num-pad', 'code-data'].forEach(function (id) {
-      $(id).addEventListener('input', function () { saveCodes(); renderCodes(); });
-      $(id).addEventListener('change', function () { saveCodes(); renderCodes(); });
+      var keep = function () {
+        // A first number typed in is where numbering starts next time too.
+        var n = Math.round(Number($('num-start').value));
+        saveCodes(id === 'num-start' && $('num-start').value !== '' && n >= 0 ? { next: n } : null);
+        renderCodes();
+      };
+      $(id).addEventListener('input', keep);
+      $(id).addEventListener('change', keep);
     });
     Array.prototype.forEach.call($('code-kind').querySelectorAll('button'), function (b) {
       b.addEventListener('click', function () { saveCodes({ kind: b.dataset.kind }); renderCodes(); });
