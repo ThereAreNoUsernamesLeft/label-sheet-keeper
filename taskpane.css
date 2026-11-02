@@ -231,3 +231,8 @@ ol.book-list li span::before{counter-increment:wait;content:counter(wait) ". ";c
 .book-edit{display:grid;gap:6px}
 .hist-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .book-list .book-edit .btn{border-width:1px;border-style:solid;font-size:12.5px}
+.book-list .book-edit input.groups{width:100%;font-size:12.5px}
+.group-row{margin:2px 0 6px;flex-wrap:nowrap}
+.group-row select{width:auto;flex:1;min-width:0}
+.group-row .btn{flex:none}
+.tally .saved{color:var(--muted)}

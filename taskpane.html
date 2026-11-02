@@ -197,7 +197,7 @@
       <!-- Address: address labels with a design, or From / Ship to on shipping sheets -->
       <div id="pane-addr" class="card" role="tabpanel" hidden>
         <div id="addr-plain">
-          <label class="fl" for="addr-pick">Saved addresses</label>
+          <label class="fl" for="addr-pick">Recent and saved addresses</label>
           <select id="addr-pick"></select>
           <label class="fl" for="addr-text">Address</label>
           <textarea id="addr-text" rows="4" spellcheck="false" placeholder="Name&#10;Street address&#10;City, State ZIP"></textarea>
@@ -227,7 +227,12 @@
           <button type="button" id="to-save" class="btn link">Save Ship to in address book</button>
         </div>
         <details class="inner">
-          <summary>Address book (<span id="book-count">0</span>) <button type="button" class="info" aria-label="About the address book" data-tip="Click an address to change it. Import contacts from the Mac Contacts app (.vcf), Google Contacts (.csv) or an Excel list. Copy all puts your addresses on the clipboard, ready to paste into Excel.">i</button></summary>
+          <summary>Address book (<span id="book-count">0</span>) <button type="button" class="info" aria-label="About the address book" data-tip="Click an address to change it or put it in groups, like Family or Work. Import contacts from the Mac Contacts app (.vcf), Google Contacts (.csv) or an Excel list. Copy all puts your addresses on the clipboard, ready to paste into Excel.">i</button></summary>
+          <div id="group-row" class="row group-row" hidden>
+            <select id="group-pick" class="grow" aria-label="Show a group"></select>
+            <button type="button" id="group-fill" class="btn ghost sm" hidden>Put on open labels</button>
+          </div>
+          <datalist id="group-names"></datalist>
           <ul id="book-list" class="book-list"></ul>
           <div class="row">
             <input type="file" id="book-file" class="sr" accept=".vcf,.csv,.txt,.xlsx,text/vcard,text/csv">
@@ -294,7 +299,7 @@
           <button type="button" id="test-yes" class="btn ghost sm">Yes</button>
           <button type="button" id="test-no" class="btn ghost sm">No, adjust</button>
           <label for="scan-file" id="scan-label" class="btn ghost sm" tabindex="0">Use a scan</label>
-          <button type="button" class="info" aria-label="About using a scan" data-tip="Scan the printed test page on your printer’s scanner: the whole page, at 100%, top edge against the top of the glass. Choose the scan, and the panel measures how far off it printed.">i</button>
+          <button type="button" class="info" aria-label="About using a scan" data-tip="Scan the printed test page on your printer’s scanner: the whole page, at 100%, any way up. The panel finds the five small squares on the page and measures how far off it printed.">i</button>
         </div>
       </div>
       <input type="file" id="scan-file" class="sr" accept=".pdf,application/pdf,image/png,image/jpeg,image/tiff">
@@ -368,6 +373,7 @@
       <summary>Settings</summary>
       <div class="settings">
         <label class="check"><input type="checkbox" id="auto-mark" checked> Mark labels used when Word prints</label>
+        <label class="check"><input type="checkbox" id="show-saved" checked> Show labels saved from partly used sheets</label>
         <label id="arrow-row" class="check"><input type="checkbox" id="feed-arrow" checked> Print a small “▲ top” mark above the labels</label>
         <div class="row">
           <label for="trip-limit">Trips per sheet</label>

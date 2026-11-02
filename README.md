@@ -40,7 +40,7 @@ Point at an **ⓘ** in the panel for a short explanation of that tool.
 2. **Mark used labels:** click each label on the map that's already peeled off your sheet.
 3. **Fill labels:**
    - **Copy:** type a label in the document, leave the cursor in it, and click **Copy** or **Fill every open label**. **Fit text** shrinks text that's too big (never below a readable size); labels whose text may be cut off get a red outline on the map.
-   - **Address:** type an address or pick a saved one, choose a design (Plain, Bold name, Return to, With logo), and put it on the next open label or every open label. In the **Address book**, click a saved address to change it.
+   - **Address:** type an address or pick one from the dropdown, which lists your last ten addresses under **Recent** and then your address book. Choose a design (Plain, Bold name, Return to, With logo), and put it on the next open label or every open label. In the **Address book**, click a saved address to change it or put it in groups (like Family or Work); pick a group to see just its addresses and put the whole group on your open labels. The table window can add a whole group too.
    - **Table:** opens a bigger window like a small spreadsheet, with one row for each open label. The first column shows which label a row goes on. Type addresses, paste cells from Excel or Numbers, or open an Excel, CSV or contacts file. Rows past your open labels are marked "New sheet"; **Fill labels** puts them on new sheets, each in its own window.
    - **Numbers:** numbers labels in order ("Box 1 of 12", "BIN-007"), with a QR code or a Code 128 barcode under each if you like. Numbering picks up where you left off on the next sheet.
 4. **Print** with ⌘P at 100% scale. Feed the sheet top edge first, print side up, and choose **Labels** as the paper type. The panel notices the print and marks those labels used.
@@ -56,6 +56,7 @@ Avery says laser label sheets should go through a laser printer only once, becau
 - Let several labels pile up as "ready to print," then print them in one trip.
 - When a table or a set of copies doesn't fit on this sheet, and you have other part-used sheets of the same size, the panel offers to fill those first. It opens each one in turn; that sheet's panel fills its open labels and opens the next. Anything left goes on new sheets.
 - Press down any lifted label edges before feeding a sheet, and retire a sheet with a peeling label.
+- Under the label counts, **labels saved** counts the labels you've printed on partly used sheets instead of fresh ones (hover for about how many sheets that is). Turn it off in **Settings**; it keeps counting while hidden, so the number is right when you turn it back on. Undoing a print takes its labels off the count.
 
 ### Feed arrow
 
@@ -65,7 +66,7 @@ On sheets with a blank strip above the labels, the panel prints a small "▲ TOP
 
 With a new printer or a new pack of labels, click **Make a test page** and print it on scrap paper. Hold it behind a label sheet against a light. The panel then asks whether it lined up. If the boxes are off the same way every time, enter the shift in **Settings › Printer adjustment**. New sheets use it, and **Apply to this sheet** moves the labels on the sheet you have open.
 
-If your printer has a scanner, the panel can measure the test page for you: scan the printed test page (the whole page, at 100%, top edge against the top of the glass), then click **Use a scan** (after a test page, or in **Settings › Printer adjustment**) and choose the scan (PDF, PNG or JPEG). The panel finds the boxes, says how far off they printed, and offers the adjustment. This works for sizes that print upright.
+If your printer has a scanner, the panel can measure the test page for you: scan the printed test page (the whole page, at 100%, any way up), then click **Use a scan** (after a test page, or in **Settings › Printer adjustment**) and choose the scan (PDF, PNG or JPEG). Test pages carry five small black squares near the corners; the panel finds them, says how far off the page printed, and offers the adjustment. This works for every size, including the sideways 2-per-sheet shipping labels. Test pages made before version 1.7 have no squares; for upright sizes the panel measures their boxes instead, and for sideways sizes it asks you to make a new test page.
 
 ### Shipping labels (2 per sheet and full sheet)
 

@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.6';
+  var VERSION = '1.7';
   var ADDIN_ID = '8d491c85-a76d-4d26-a6f5-b7b2dd4a1711';   // must match manifest.xml <Id>
   var F = window.LSK_FORMATS;
   var S = window.LSK_SHEET;
@@ -34,7 +34,8 @@
     warnPass: 'lsk.warnPassHidden', last: 'lsk.last.', book: 'lsk.addressBook', design: 'lsk.design', logo: 'lsk.logo',
     custom: 'lsk.customFormats', sheets: 'lsk.sheets', tableInfo: 'lsk.tableInfo', tableDraft: 'lsk.tableDraft',
     home: 'lsk.homeCountry', geoKey: 'lsk.geoKey', suggest: 'lsk.suggest',
-    stock: 'lsk.stock.', fillJob: 'lsk.fillJob', testNudge: 'lsk.testNudge.', codes: 'lsk.codes'
+    stock: 'lsk.stock.', fillJob: 'lsk.fillJob', testNudge: 'lsk.testNudge.', codes: 'lsk.codes',
+    recent: 'lsk.recent', saved: 'lsk.savedLabels', showSaved: 'lsk.showSaved'
   };
   var USED_TAG = 'lsk-used';
 
@@ -158,6 +159,11 @@
   // Per-Mac settings
   function feedArrowOn() { return store(LS.feedArrow) !== 'off'; }
   function autoMarkOn() { return store(LS.autoMark) !== 'off'; }
+  // Labels printed on sheets that already had used labels. The count keeps
+  // going while it's hidden, so it's right when it's shown again.
+  function savedCount() { var c = Number(store(LS.saved)); return isFinite(c) && c > 0 ? Math.round(c) : 0; }
+  function addSaved(n) { store(LS.saved, String(Math.max(0, savedCount() + n))); }
+  function showSavedOn() { return store(LS.showSaved) !== 'off'; }
   function tripLimit() { var n = Math.round(Number(store(LS.tripLimit))); return n >= 1 && n <= 20 ? n : 3; }
   function nudgeFor(id) { var v = storeJson(LS.nudge + id); return v && typeof v.x === 'number' ? v : { x: 0, y: 0 }; }
   function trips() { return Number(getSetting(DOC.trips)) || 0; }
@@ -780,7 +786,7 @@
   }
   var KEEP_SNAPS = 8;   // newest prints that can be undone with their text
   function markPrinted() {
-    var nums = keys(st.ready), firstTrip = trips() === 0, snaps = {};
+    var nums = keys(st.ready), firstTrip = trips() === 0, snaps = {}, saved = keys(st.used).length ? nums.length : 0;
     return Word.run(function (ctx) {
       var gets = nums.map(function (n) { return grabContent(cellBody(ctx, n)); });
       var lists = nums.map(function (n) { if (st.pics[n]) return null; var ps = cellBody(ctx, n).paragraphs; ps.load(SNAP_PROPS); return ps; });
@@ -793,8 +799,10 @@
       var at = undo.at, texts = [];
       nums.forEach(function (n) { var t = firstLine(st.texts[n]); if (t && texts.indexOf(t) < 0) texts.push(t); });
       undo.stock = firstTrip && takeFromStock(st.fmt);
+      undo.saved = saved;
+      if (saved) addSaved(saved);
       var h = history();
-      h.unshift({ at: at, nums: nums, text: texts.length ? texts[0] + (texts.length > 1 ? ' and ' + plural(texts.length - 1, 'other') : '') : '', stock: undo.stock || undefined, labels: snaps });
+      h.unshift({ at: at, nums: nums, text: texts.length ? texts[0] + (texts.length > 1 ? ' and ' + plural(texts.length - 1, 'other') : '') : '', stock: undo.stock || undefined, saved: saved || undefined, labels: snaps });
       h.forEach(function (e, i) { if (i >= KEEP_SNAPS) delete e.labels; });
       setSetting(DOC.history, h.slice(0, 200));
       setSetting(DOC.trips, trips() + 1);
@@ -818,6 +826,7 @@
       if (h.length && h[0].at === u.at) { h.shift(); setSetting(DOC.history, h); }
       setSetting(DOC.trips, Math.max(0, trips() - 1));
       if (u.stock) putBackInStock(st.fmt);
+      if (u.saved) addSaved(-u.saved);
       setSpots(u.nums, null);
       undo = null;
     });
@@ -838,6 +847,7 @@
       setSetting(DOC.history, history().filter(function (x) { return x.at !== e.at; }));
       setSetting(DOC.trips, Math.max(0, trips() - 1));
       if (e.stock) putBackInStock(st.fmt);
+      if (e.saved) addSaved(-e.saved);
       setSpots(e.nums, null);
       return items.length;
     });
@@ -1424,17 +1434,21 @@
   function handleScan(file) {
     var f = st.fmt;
     if (!file || !f) return;
-    if (!scanWorks(f)) { say('Lining up from a scan works for sheets that print upright. For this size, measure how far off the boxes are and type it in Settings.', 'warn'); return; }
     say('Reading the scan…');
     scanResult = null; renderScan();
     var get = isPdfFile(file) ? openPdf(file).then(function (doc) { return pdfPageCanvas(doc, 1, 150); }) : imageCanvas(file, 1700);
     get.then(function (c) {
       var w = c.width, h = c.height, d = c.getContext('2d').getImageData(0, 0, w, h).data, gray = new Uint8Array(w * h);
       for (var i = 0; i < w * h; i++) gray[i] = (d[i * 4] * 299 + d[i * 4 + 1] * 587 + d[i * 4 + 2] * 114) / 1000;
-      var grid = T.findGrid(gray, w, h);
-      if (!grid) { say('No label boxes were found on the scan. Scan the test page made by this panel, the whole page, at 100%.', 'warn'); return; }
       var made = storeJson(LS.testNudge + f.id) || nudgeFor(f.id);
-      var r = T.alignFromScan(grid, w, h, f, made);
+      // Test pages carry five small squares; older ones only the label boxes.
+      var long = Math.max(f.page.width, f.page.height), short = Math.min(f.page.width, f.page.height);
+      var r = T.alignFromMarks(T.findMarks(gray, w, h, w / (w > h ? long : short)), w, h, f, made);
+      if (!r) {
+        var grid = scanWorks(f) ? T.findGrid(gray, w, h) : null;
+        if (!grid) { say('The alignment squares weren’t found on the scan. Make a new test page from this panel, print it at 100%, and scan the whole page.', 'warn'); return; }
+        r = T.alignFromScan(grid, w, h, f, made);
+      }
       if (r.problem) { say(r.problem, 'warn'); return; }
       scanResult = r;
       renderScan();
@@ -1459,6 +1473,24 @@
 
   // ---------- addresses ----------
   function book() { var b = storeJson(LS.book); return Array.isArray(b) ? b : []; }
+  // The last ten addresses put on a label, newest first: { lines, at }
+  function recent() { var r = storeJson(LS.recent); return Array.isArray(r) ? r : []; }
+  function noteRecent(lines) {
+    lines = (lines || []).map(function (l) { return String(l).trim(); }).filter(Boolean);
+    if (!lines.length) return;
+    var key = lines.join('\n').toLowerCase();
+    var r = recent().filter(function (e) { return e.lines.join('\n').toLowerCase() !== key; });
+    r.unshift({ lines: lines, at: Date.now() });
+    storeJson(LS.recent, r.slice(0, 10));
+  }
+  function groupsOf(e) { return Array.isArray(e.groups) ? e.groups : []; }
+  function allGroups() {
+    var seen = {}, out = [];
+    book().forEach(function (e) { groupsOf(e).forEach(function (g) { var k = g.toLowerCase(); if (!seen[k]) { seen[k] = true; out.push(g); } }); });
+    return out.sort(function (a, b) { return a.localeCompare(b); });
+  }
+  function inGroup(e, g) { return groupsOf(e).some(function (x) { return x.toLowerCase() === g.toLowerCase(); }); }
+  var groupShown = '';         // group the address book list is showing
   // A saved address being changed in the address book list. Kept across
   // redraws so a refresh doesn't lose what's being typed.
   var bookEdit = null;   // { id, text }
@@ -1709,7 +1741,6 @@
   // in order: row 1 goes on the first open label, and so on. An empty row
   // leaves its label open. Rows past the open labels go on new sheets.
   function fillFromRows(rows) {
-    var f = st.fmt;
     var lines = (rows || []).map(function (r) {
       r = r || [];
       return T.addressLines({ name: r[0], company: r[1], street: r[2], apt: r[3], city: r[4], state: r[5], zip: r[6] }, { home: homeCountry() });
@@ -1717,8 +1748,14 @@
     while (lines.length && !lines[lines.length - 1].length) lines.pop();
     var count = lines.filter(function (l) { return l.length; }).length;
     if (!count) { say('The table is empty. Add at least one address.', 'warn'); return; }
+    fillAddresses(lines, 'from the table');
+  }
+  // Put a list of addresses on the open labels, in order (an empty entry
+  // leaves a label empty), and offer more sheets for the rest.
+  function fillAddresses(lines, from) {
+    var f = st.fmt, fromText = fromAddress();
     var design = currentDesign() === 'bold' ? 'bold' : 'plain';
-    var parasFor = function (l) { return designParas(l, design, f).paras; };
+    var parasFor = f.shipping ? function (l) { return shippingParas(fromText, l.join('\n'), f); } : function (l) { return designParas(l, design, f).paras; };
     var open = openList();
     var items = [];
     lines.slice(0, open.length).forEach(function (l, i) { if (l.length) items.push({ n: open[i], paras: parasFor(l) }); });
@@ -1729,7 +1766,7 @@
       return queueChange(function () { return writeEach(items); }).then(refresh);
     };
     if (!rest.length) {
-      fillHere().then(function () { say('Filled ' + labelList(nums) + ' from the table.'); });
+      fillHere().then(function () { say('Filled ' + labelList(nums) + ' ' + from + '.'); });
       return;
     }
     askOverflow(f, nums.length, rest.map(parasFor), 'address', fillHere, function (msg) {
@@ -1765,6 +1802,9 @@
     lines.push('Printer adjustments: ' + (nudges ? plural(nudges, 'label size') : 'none'));
     if (stocks) lines.push('Label stock and reorder links: ' + plural(stocks, 'label size'));
     if (data[LS.logo]) lines.push('Logo: saved');
+    var rc = parse(LS.recent);
+    if (Array.isArray(rc) && rc.length) lines.push('Recent addresses: ' + rc.length);
+    if (Number(data[LS.saved]) > 0) lines.push('Labels saved count: ' + Number(data[LS.saved]).toLocaleString());
     lines.push('Geoapify key: ' + (data[LS.geoKey] ? 'included' : 'not included'));
     return lines;
   }
@@ -2005,6 +2045,12 @@
     var tripsEl = el('span', 'trips' + (tr >= lim - 1 && tr > 0 ? ' last' : ''), tr + ' of ' + lim + ' trips');
     tripsEl.title = 'Times this sheet has gone through the printer';
     t.appendChild(tripsEl);
+    if (showSavedOn()) {
+      var c = savedCount(), sheets = Math.floor(c / total());
+      var sv = el('span', 'saved', c.toLocaleString() + (c === 1 ? ' label saved' : ' labels saved'));
+      sv.title = 'Labels printed on partly used sheets instead of fresh ones, on this Mac' + (sheets ? ': about ' + plural(sheets, 'sheet') + ' of this size' : '') + '. Turn this off in Settings.';
+      t.appendChild(sv);
+    }
   }
 
   function renderHere() {
@@ -2075,13 +2121,32 @@
     if (!rp.hidden) rp.textContent = 'Reprint last label (“' + last.text + '”)';
   }
 
+  // Recent addresses and the address book, in one dropdown.
   function pickerOptions(select, includeMine) {
-    var b = book(), mine = fromAddress();
+    var b = book(), mine = fromAddress(), r = recent(), keep = select.value;
     select.innerHTML = '';
-    var o0 = el('option', '', b.length || (includeMine && mine) ? 'Choose a saved address…' : 'No saved addresses yet'); o0.value = '';
+    var any = b.length || r.length || (includeMine && mine);
+    var o0 = el('option', '', any ? 'Choose an address…' : 'No saved or recent addresses yet'); o0.value = '';
     select.appendChild(o0);
     if (includeMine && mine) { var om = el('option', '', 'My return address'); om.value = 'mine'; select.appendChild(om); }
-    b.forEach(function (e) { var o = el('option', '', e.name + (e.lines[1] ? ' · ' + e.lines[1] : '')); o.value = e.id; select.appendChild(o); });
+    var label = function (lines) { return lines[0] + (lines[1] ? ' · ' + lines[1] : ''); };
+    if (r.length) {
+      var gr = document.createElement('optgroup'); gr.label = 'Recent';
+      r.forEach(function (e, i) { var o = el('option', '', label(e.lines)); o.value = 'recent:' + i; gr.appendChild(o); });
+      select.appendChild(gr);
+    }
+    if (b.length) {
+      var gb = document.createElement('optgroup'); gb.label = 'Address book';
+      b.forEach(function (e) { var o = el('option', '', label(e.lines)); o.value = e.id; gb.appendChild(o); });
+      select.appendChild(gb);
+    }
+    if (keep && select.querySelector('option[value="' + keep.replace(/"/g, '') + '"]')) select.value = keep;
+  }
+  function pickedLines(v) {
+    if (v === 'mine') return textLines(fromAddress());
+    if (/^recent:\d+$/.test(v)) { var r = recent()[Number(v.slice(7))]; return r ? r.lines : null; }
+    var e = book().filter(function (k) { return k.id === v; })[0];
+    return e ? e.lines : null;
   }
   function renderAddress() {
     var f = st.fmt, n = nextOpen();
@@ -2113,17 +2178,31 @@
       $('logo-msg').textContent = logo ? 'Logo saved on this Mac.' : 'PNG or JPEG. Saved on this Mac.';
       $('addr-one').disabled = !n; $('addr-all').disabled = !n;
     }
-    var b2 = book();
+    var b2 = book(), groups = allGroups();
     $('book-count').textContent = b2.length;
+    // Groups: a filter above the list, shown once an address has a group.
+    if (groupShown && !groups.some(function (g) { return g.toLowerCase() === groupShown.toLowerCase(); })) groupShown = '';
+    $('group-row').hidden = !groups.length;
+    var gp = $('group-pick'); gp.innerHTML = '';
+    var g0 = el('option', '', 'All addresses'); g0.value = ''; gp.appendChild(g0);
+    groups.forEach(function (g) {
+      var o = el('option', '', g + ' (' + b2.filter(function (e) { return inGroup(e, g); }).length + ')'); o.value = g; gp.appendChild(o);
+    });
+    gp.value = groupShown;
+    $('group-fill').hidden = !groupShown;
+    $('group-fill').disabled = !n;
+    var dl = $('group-names'); dl.innerHTML = '';
+    groups.forEach(function (g) { var o = document.createElement('option'); o.value = g; dl.appendChild(o); });
+    if (groupShown) b2 = b2.filter(function (e) { return inGroup(e, groupShown); });
     var ul = $('book-list'); ul.innerHTML = '';
     if (!b2.length) ul.appendChild(el('li', '', 'No saved addresses yet.'));
     b2.forEach(function (e) {
       var li = el('li');
       if (bookEdit && bookEdit.id === e.id) { li.className = 'editing'; li.appendChild(bookEditor(e)); ul.appendChild(li); return; }
       var name = el('button', 'addr', e.lines.join(', ')); name.type = 'button';
-      name.title = e.lines.join('\n') + '\n\nClick to edit';
+      name.title = e.lines.join('\n') + (groupsOf(e).length ? '\nGroups: ' + groupsOf(e).join(', ') : '') + '\n\nClick to edit';
       name.setAttribute('aria-label', 'Edit ' + e.name);
-      name.addEventListener('click', function () { bookEdit = { id: e.id, text: e.lines.join('\n') }; renderAddress(); var ta = $('book-edit'); ta.focus(); });
+      name.addEventListener('click', function () { bookEdit = { id: e.id, text: e.lines.join('\n'), groups: groupsOf(e).join(', ') }; renderAddress(); var ta = $('book-edit'); ta.focus(); });
       var x = el('button', '', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Delete ' + e.name);
       x.addEventListener('click', function () { storeJson(LS.book, book().filter(function (k) { return k.id !== e.id; })); renderAddress(); say('Deleted ' + e.name + ' from the address book.'); });
       li.appendChild(name); li.appendChild(x); ul.appendChild(li);
@@ -2134,23 +2213,44 @@
     var ta = document.createElement('textarea'); ta.id = 'book-edit'; ta.rows = Math.max(3, e.lines.length + 1); ta.spellcheck = false;
     ta.value = bookEdit.text; ta.setAttribute('aria-label', 'Address for ' + e.name);
     ta.addEventListener('input', function () { bookEdit.text = ta.value; });
-    ta.addEventListener('keydown', function (k) { if (k.key === 'Escape') { bookEdit = null; renderAddress(); } });
+    var gi = document.createElement('input'); gi.type = 'text'; gi.id = 'book-edit-groups'; gi.className = 'groups';
+    gi.placeholder = 'Groups, like Family, Work'; gi.value = bookEdit.groups; gi.spellcheck = false; gi.autocomplete = 'off';
+    gi.setAttribute('aria-label', 'Groups for ' + e.name + ', separated by commas'); gi.setAttribute('list', 'group-names');
+    gi.addEventListener('input', function () { bookEdit.groups = gi.value; });
+    [ta, gi].forEach(function (x) { x.addEventListener('keydown', function (k) { if (k.key === 'Escape') { bookEdit = null; renderAddress(); } }); });
+    gi.addEventListener('keydown', function (k) { if (k.key === 'Enter') { k.preventDefault(); saveBookEdit(e.id); } });
     var row = el('div', 'row');
     var save = el('button', 'btn primary sm', 'Save'); save.type = 'button';
     save.addEventListener('click', function () { saveBookEdit(e.id); });
     var cancel = el('button', 'btn ghost sm', 'Cancel'); cancel.type = 'button';
     cancel.addEventListener('click', function () { bookEdit = null; renderAddress(); });
     row.appendChild(save); row.appendChild(cancel);
-    box.appendChild(ta); box.appendChild(row);
+    box.appendChild(ta); box.appendChild(gi); box.appendChild(row);
     return box;
+  }
+  function parseGroups(text) {
+    var seen = {}, out = [];
+    String(text || '').split(/[,;]/).forEach(function (g) {
+      g = g.replace(/\s+/g, ' ').trim().slice(0, 40);
+      var k = g.toLowerCase();
+      if (g && !seen[k]) {
+        // Use the spelling already in the address book.
+        var have = allGroups().filter(function (x) { return x.toLowerCase() === k; })[0];
+        seen[k] = true; out.push(have || g);
+      }
+    });
+    return out;
   }
   function saveBookEdit(id) {
     var lines = textLines(bookEdit && bookEdit.text);
     if (!lines.length) { say('Type the address, or click × to delete it.', 'warn'); return; }
-    var key = lines.join('\n').toLowerCase(), b = book();
+    var key = lines.join('\n').toLowerCase(), b = book(), groups = parseGroups(bookEdit.groups);
     var same = b.filter(function (k) { return k.id !== id && k.lines.join('\n').toLowerCase() === key; })[0];
-    if (same) b = b.filter(function (k) { return k.id !== id; });
-    else b.forEach(function (k) { if (k.id === id) { k.lines = lines; k.name = lines[0]; } });
+    var setGroups = function (k, g) { if (g.length) k.groups = g; else delete k.groups; };
+    if (same) {
+      b = b.filter(function (k) { return k.id !== id; });
+      setGroups(same, parseGroups(groupsOf(same).concat(groups).join(',')));
+    } else b.forEach(function (k) { if (k.id === id) { k.lines = lines; k.name = lines[0]; setGroups(k, groups); } });
     b.sort(function (x, y) { return x.name.localeCompare(y.name); });
     storeJson(LS.book, b);
     bookEdit = null;
@@ -2187,8 +2287,6 @@
     $('undo-row').hidden = !undo;
     if (undo) $('undo-msg').textContent = cap(labelList(undo.nums)) + (undo.nums.length === 1 ? ' was' : ' were') + ' marked used.';
     // Lining up from a scan
-    $('scan-label').hidden = !scanWorks(f);
-    $('scan-label2').hidden = !scanWorks(f);
     renderScan();
     // Running low on labels
     var sk = stockFor(f.id), low = stockLow(sk);
@@ -2281,6 +2379,7 @@
   function renderSettings() {
     var f = st.fmt, nd = nudgeFor(f.id);
     $('auto-mark').checked = autoMarkOn();
+    $('show-saved').checked = showSavedOn();
     $('arrow-row').hidden = !(F.hasStrip(f));
     $('feed-arrow').checked = feedArrowOn();
     $('feed-arrow').disabled = !arrowFits() || !!st.headerOther;
@@ -2587,6 +2686,13 @@
 
     // Settings
     $('auto-mark').addEventListener('change', function () { store(LS.autoMark, $('auto-mark').checked ? 'on' : 'off'); });
+    $('show-saved').addEventListener('change', function () { store(LS.showSaved, $('show-saved').checked ? 'on' : 'off'); if (st.kind === 'sheet') renderTally(); });
+    $('group-pick').addEventListener('change', function () { groupShown = $('group-pick').value; bookEdit = null; renderAddress(); });
+    $('group-fill').addEventListener('click', function () {
+      var g = groupShown, list = book().filter(function (e) { return inGroup(e, g); }).map(function (e) { return e.lines; });
+      if (!list.length) return;
+      fillAddresses(list, 'with ' + g);
+    });
     $('feed-arrow').addEventListener('change', function () { store(LS.feedArrow, $('feed-arrow').checked ? 'on' : 'off'); syncHeader(); render(); });
     $('trip-limit').addEventListener('change', function () {
       var n = Math.round(Number($('trip-limit').value));
@@ -2751,9 +2857,9 @@
   function wireAddress() {
     // Address labels (with a design)
     $('addr-pick').addEventListener('change', function () {
-      var v = $('addr-pick').value;
-      if (v === 'mine') $('addr-text').value = fromAddress();
-      else { var e = book().filter(function (k) { return k.id === v; })[0]; if (e) $('addr-text').value = e.lines.join('\n'); }
+      var lines = pickedLines($('addr-pick').value);
+      if (lines) $('addr-text').value = lines.join('\n');
+      $('addr-pick').value = '';
     });
     function placeAddr(all) {
       var lines = textLines($('addr-text').value);
@@ -2762,7 +2868,7 @@
       if (!nums.length) { say('There are no open labels on this sheet.', 'warn'); return; }
       var d = designParas(lines, currentDesign(), st.fmt);
       if (currentDesign() === 'logo' && !d.pic) { say('Choose a logo first, or pick another design.', 'warn'); return; }
-      queueChange(function () { return writeLabels(nums, d.paras, d.pic); }).then(refresh).then(function () { say('Put the address on ' + labelList(nums) + '.'); });
+      queueChange(function () { return writeLabels(nums, d.paras, d.pic); }).then(function () { noteRecent(lines); return refresh(); }).then(function () { say('Put the address on ' + labelList(nums) + '.'); });
     }
     $('addr-one').addEventListener('click', function () { placeAddr(false); });
     $('addr-all').addEventListener('click', function () { placeAddr(true); });
@@ -2802,8 +2908,9 @@
     from.value = fromAddress();
     from.addEventListener('input', function () { saveFrom(from.value); });
     $('to-pick').addEventListener('change', function () {
-      var e = book().filter(function (k) { return k.id === $('to-pick').value; })[0];
-      if (e) $('to-addr').value = e.lines.join('\n');
+      var lines = pickedLines($('to-pick').value);
+      if (lines) $('to-addr').value = lines.join('\n');
+      $('to-pick').value = '';
     });
     $('to-save').addEventListener('click', function () {
       var lines = textLines($('to-addr').value);
@@ -2818,7 +2925,7 @@
       if (!n) { say('There are no open labels on this sheet.', 'warn'); return; }
       var fromText = from.value.replace(/\s+$/, '');
       saveFrom(fromText);
-      queueChange(function () { return writeLabels([n], shippingParas(fromText, to, st.fmt)); }).then(refresh).then(function () {
+      queueChange(function () { return writeLabels([n], shippingParas(fromText, to, st.fmt)); }).then(function () { noteRecent(textLines(to)); return refresh(); }).then(function () {
         $('to-addr').value = '';
         say('Address label placed on ' + theName(n) + '. You can edit it in the document.');
       });

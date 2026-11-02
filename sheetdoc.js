@@ -207,11 +207,34 @@
   // 0, Word makes room for a header or footer even when there is none, which
   // would push full-height labels onto a second page.
   var TINY_P = '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/><w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr></w:p>';
-  function headerXml(text) {
-    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ' + NS + '>' + (text ?
-      '<w:p><w:pPr><w:spacing w:before="' + ARROW_BEFORE_PT * 20 + '" w:after="0"/><w:jc w:val="center"/></w:pPr>' +
+  // Test pages: five small black squares placed against the page, for lining
+  // up from a scan (lsk-tools.js reads them; keep MARK the same there).
+  var MARK = { size: 0.2, inset: 0.6, gap: 0.5 };
+  var MARK_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAAAAADhZOFXAAAADElEQVR4XmNgoA4AAABIAAHXfanPAAAAAElFTkSuQmCC';
+  var DRAW_NS = ' xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+  function marksXml(page) {
+    var s = MARK.size, i = MARK.inset, W = page.width, H = page.height, emu = function (v) { return Math.round(v * 914400); };
+    var at = [[i, i], [i + MARK.gap, i], [W - i - s, i], [i, H - i - s], [W - i - s, H - i - s]];
+    return at.map(function (p, k) {
+      var id = 100 + k;
+      return '<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="' + (251659264 + k) + '" behindDoc="1" locked="1" layoutInCell="0" allowOverlap="1">' +
+        '<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="page"><wp:posOffset>' + emu(p[0]) + '</wp:posOffset></wp:positionH>' +
+        '<wp:positionV relativeFrom="page"><wp:posOffset>' + emu(p[1]) + '</wp:posOffset></wp:positionV>' +
+        '<wp:extent cx="' + emu(s) + '" cy="' + emu(s) + '"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/>' +
+        '<wp:docPr id="' + id + '" name="Alignment mark ' + (k + 1) + '"/><wp:cNvGraphicFramePr/>' +
+        '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic>' +
+        '<pic:nvPicPr><pic:cNvPr id="' + id + '" name="mark.png"/><pic:cNvPicPr/></pic:nvPicPr>' +
+        '<pic:blipFill><a:blip r:embed="rIdMark"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>' +
+        '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + emu(s) + '" cy="' + emu(s) + '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>' +
+        '</pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>';
+    }).join('');
+  }
+  function headerXml(text, page) {
+    var marks = page ? marksXml(page) : '';
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ' + NS + (marks ? DRAW_NS : '') + '>' + (text ?
+      '<w:p><w:pPr><w:spacing w:before="' + ARROW_BEFORE_PT * 20 + '" w:after="0"/><w:jc w:val="center"/></w:pPr>' + marks +
       '<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:b/><w:color w:val="555555"/><w:sz w:val="' + ARROW_SIZE_PT * 2 + '"/><w:szCs w:val="' + ARROW_SIZE_PT * 2 + '"/></w:rPr>' +
-      '<w:t xml:space="preserve">' + esc(text) + '</w:t></w:r></w:p>' : TINY_P) + '</w:hdr>';
+      '<w:t xml:space="preserve">' + esc(text) + '</w:t></w:r></w:p>' : TINY_P.replace('</w:p>', marks + '</w:p>')) + '</w:hdr>';
   }
   function footerXml() {
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ' + NS + '>' + TINY_P + '</w:ftr>';
@@ -285,6 +308,7 @@
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
       '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
       '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Default Extension="png" ContentType="image/png"/>' +
       '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
       '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
       '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>' +
@@ -378,7 +402,14 @@
     zip.file('word/_rels/document.xml.rels', docRels());
     zip.file('word/styles.xml', stylesXml(f));
     zip.file('word/settings.xml', SETTINGS);
-    zip.file('word/header1.xml', headerXml(header));
+    zip.file('word/header1.xml', headerXml(header, opts.test ? f.page : null));
+    if (opts.test) {
+      zip.file('word/media/mark.png', MARK_PNG, { base64: true });
+      zip.file('word/_rels/header1.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rIdMark" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/mark.png"/>' +
+        '</Relationships>');
+    }
     zip.file('word/footer1.xml', footerXml());
     return zip.generateAsync({ type: opts.type || 'base64', compression: 'DEFLATE' });
   }

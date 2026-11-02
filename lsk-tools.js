@@ -572,6 +572,97 @@
     return { nudge: { x: round(nudge.x - err.x), y: round(nudge.y - err.y) }, error: { x: round(err.x), y: round(err.y) }, widthRatio: ratio };
   }
 
+  // ---------- registration marks on the test page ----------
+  // Test pages carry five small black squares placed against the page itself
+  // (not the labels), so a scan shows how the printer shifted the page, in
+  // any orientation: four corners, plus one beside the top-left square that
+  // shows which way the page's top and left are.
+  var MARK = { size: 0.2, inset: 0.6, gap: 0.5 };
+  function markSpots(page) {
+    var s = MARK.size, i = MARK.inset, W = page.width, H = page.height, c = function (x, y) { return { x: x + s / 2, y: y + s / 2 }; };
+    return { a: c(i, i), b: c(i + MARK.gap, i), c: c(W - i - s, i), d: c(i, H - i - s), e: c(W - i - s, H - i - s) };
+  }
+  // Solid dark squares about the size of a mark, as centers in pixels.
+  function findMarks(gray, w, h, ppi) {
+    var side = MARK.size * ppi, seen = new Uint8Array(w * h), out = [], stack = [];
+    for (var start = 0; start < w * h; start++) {
+      if (seen[start] || gray[start] >= 110) continue;
+      var n = 0, sx = 0, sy = 0, minX = w, maxX = 0, minY = h, maxY = 0;
+      stack.length = 0; stack.push(start); seen[start] = 1;
+      while (stack.length) {
+        var k = stack.pop(), x = k % w, y = (k - x) / w;
+        n++; sx += x; sy += y;
+        if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
+        var nb = [k - 1, k + 1, k - w, k + w];
+        for (var j = 0; j < 4; j++) {
+          var q = nb[j];
+          if (q < 0 || q >= w * h || seen[q]) continue;
+          if ((j === 0 && x === 0) || (j === 1 && x === w - 1)) continue;
+          if (gray[q] < 110) { seen[q] = 1; stack.push(q); }
+        }
+      }
+      var bw = maxX - minX + 1, bh = maxY - minY + 1;
+      if (Math.abs(bw - side) < side * 0.3 && Math.abs(bh - side) < side * 0.3 && n / (bw * bh) > 0.8) out.push({ x: sx / n, y: sy / n });
+    }
+    return out;
+  }
+  // From the marks found on a scan -> the printer adjustment for this size.
+  // made: the adjustment the test page was made with (it moves the labels,
+  // not the marks). Returns { nudge, error, turn } in inches, or { problem }.
+  function alignFromMarks(points, imgW, imgH, f, made) {
+    made = made || { x: 0, y: 0 };
+    var W = f.page.width, H = f.page.height, paperLong = Math.max(W, H), paperShort = Math.min(W, H);
+    var land = imgW > imgH, ppi = imgW / (land ? paperLong : paperShort);
+    if (Math.abs((land ? imgW / imgH : imgH / imgW) - paperLong / paperShort) > 0.04) return { problem: 'The scan isn’t the shape of a whole ' + paperShort + ' × ' + paperLong + ' in page. Scan the whole page at Letter size.' };
+    var pts = points.map(function (p) { return { x: p.x / ppi, y: p.y / ppi }; });
+    var spots = markSpots(f.page), dist = function (p, q) { return Math.hypot(p.x - q.x, p.y - q.y); };
+    // The pair half an inch apart is the top-left square and its neighbor.
+    var best = null;
+    for (var i = 0; i < pts.length; i++) {
+      for (var j = 0; j < pts.length; j++) {
+        if (i === j) continue;
+        var d = Math.abs(dist(pts[i], pts[j]) - MARK.gap);
+        if (d >= 0.12) continue;
+        // pts[i] is the corner square if the others sit the page's width and
+        // height away from it (its neighbor fits less well, by half an inch).
+        var far = pts.filter(function (p, k) { return k !== i && k !== j; });
+        var sides = far.map(function (p) { return dist(p, pts[i]); }).sort(function (x, y) { return x - y; });
+        var wantA = Math.min(W, H) - 2 * MARK.inset - MARK.size, wantB = Math.max(W, H) - 2 * MARK.inset - MARK.size;
+        if (sides.length < 3) continue;
+        var score = Math.abs(sides[0] / wantA - 1) + Math.abs(sides[1] / wantB - 1) + d;
+        if (score < 0.12 && (!best || score < best.score)) best = { a: pts[i], b: pts[j], score: score };
+      }
+    }
+    if (!best) return null;
+    // Which way the page lies on the scan, to the nearest quarter turn.
+    var ang = Math.atan2(best.b.y - best.a.y, best.b.x - best.a.x), turn = ((Math.round(ang / (Math.PI / 2)) % 4) + 4) % 4;
+    var cos = [1, 0, -1, 0][turn], sin = [0, 1, 0, -1][turn];
+    var rot = function (p) { return { x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos }; };
+    var corners = [rot({ x: 0, y: 0 }), rot({ x: W, y: 0 }), rot({ x: 0, y: H }), rot({ x: W, y: H })];
+    var tx = -Math.min.apply(null, corners.map(function (p) { return p.x; })), ty = -Math.min.apply(null, corners.map(function (p) { return p.y; }));
+    var toScan = function (p) { var r = rot(p); return { x: r.x + tx, y: r.y + ty }; };
+    // Match each expected square to the nearest one found.
+    var keysList = ['a', 'b', 'c', 'd', 'e'], sum = { x: 0, y: 0 }, used = 0, want = {}, got = {};
+    keysList.forEach(function (k) {
+      var e = toScan(spots[k]), near = null, nd = 1e9;
+      pts.forEach(function (p) { var dd = dist(p, e); if (dd < nd) { nd = dd; near = p; } });
+      if (near && nd < 0.6) { want[k] = e; got[k] = near; sum.x += near.x - e.x; sum.y += near.y - e.y; used++; }
+    });
+    if (used < 4) return null;
+    // Printed at the wrong size? Compare the distance across the page.
+    if (got.a && got.e) {
+      var ratio = dist(got.a, got.e) / dist(want.a, want.e);
+      if (Math.abs(ratio - 1) > 0.03) return { problem: 'The test page printed ' + Math.round(ratio * 100) + '% of full size. Print it again at 100% scale (turn off “Scale to fit” in the print settings), then scan it.' };
+    }
+    var es = { x: sum.x / used, y: sum.y / used };
+    // Back from the scan's directions to the page's.
+    var ep = { x: es.x * cos + es.y * sin, y: -es.x * sin + es.y * cos };
+    if (Math.abs(ep.x) > 0.5 || Math.abs(ep.y) > 0.5) return { problem: 'The page printed more than half an inch from where it should be. Check that the page was scanned against the corner of the glass.' };
+    var round = function (v) { return Math.round(v * 100) / 100 || 0; };
+    // The labels printed at their place + the adjustment + the printer's shift.
+    return { nudge: { x: round(-ep.x), y: round(-ep.y) }, error: { x: round(made.x + ep.x), y: round(made.y + ep.y) }, turn: turn * 90 };
+  }
+
   // Label content (a flat OOXML package) that is nothing but a table, as
   // version 1.3's Copy left behind: replace the table with the content of its
   // non-empty cells. Anything else comes back unchanged.
@@ -615,6 +706,7 @@
     fontCss: fontCss, textHeight: textHeight, fits: fits, fitScale: fitScale, findLabelBorder: findLabelBorder,
     unwrapTable: unwrapTable, countryOf: countryOf, fixPostal: fixPostal, regionCode: regionCode, lookupPostal: lookupPostal, suggestAddresses: suggestAddresses,
     reorderLink: reorderLink, numberText: numberText, qrMatrix: qrMatrix, code128: code128, findGrid: findGrid, alignFromScan: alignFromScan,
+    MARK: MARK, markSpots: markSpots, findMarks: findMarks, alignFromMarks: alignFromMarks,
     FIELDS: FIELDS, PROVINCES: PROVINCES
   };
   root.LSK_TOOLS = api;

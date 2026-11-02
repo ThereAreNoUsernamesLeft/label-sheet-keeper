@@ -283,12 +283,19 @@
     var o = document.createElement('option'); o.value = ''; o.textContent = b.length ? 'Add a saved address…' : 'No saved addresses';
     sel.appendChild(o);
     if (b.length) { var all = document.createElement('option'); all.value = '*'; all.textContent = 'Add all ' + b.length; sel.appendChild(all); }
+    var groups = {};
+    b.forEach(function (e) { (Array.isArray(e.groups) ? e.groups : []).forEach(function (g) { var k = g.toLowerCase(); if (!groups[k]) groups[k] = { name: g, n: 0 }; groups[k].n++; }); });
+    Object.keys(groups).sort().forEach(function (k) {
+      var op = document.createElement('option'); op.value = 'group:' + k; op.textContent = 'Add group: ' + groups[k].name + ' (' + groups[k].n + ')'; sel.appendChild(op);
+    });
     b.forEach(function (e) { var op = document.createElement('option'); op.value = e.id; op.textContent = e.name; sel.appendChild(op); });
     sel.disabled = !b.length;
   }
   $('book').addEventListener('change', function () {
     var b = json(BOOK) || [], v = $('book').value;
-    var pick = v === '*' ? b : b.filter(function (e) { return e.id === v; });
+    var g = v.indexOf('group:') === 0 ? v.slice(6) : null;
+    var inG = function (e) { return (Array.isArray(e.groups) ? e.groups : []).some(function (x) { return x.toLowerCase() === g; }); };
+    var pick = v === '*' ? b : g !== null ? b.filter(inG) : b.filter(function (e) { return e.id === v; });
     if (pick.length) { appendRows(pick.map(function (e) { return fieldsToRow(T.linesToFields(e.lines)); })); msg('Added ' + plural(pick.length, 'saved address', 'es') + '.'); }
     $('book').value = '';
   });
