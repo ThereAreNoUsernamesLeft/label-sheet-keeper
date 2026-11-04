@@ -2,30 +2,30 @@ const T = require(require('path').join(__dirname, '..', 'lsk-tools.js'));
 const assert = require('assert');
 let n = 0; const ok = (c, m) => { assert(c, m); n++; };
 // CSV with quotes, embedded newline and comma
-let rows = T.parseDelimited('Name,Street,City,State,ZIP\n"Doe, Jane","12 Elm St\nUnit 4",Boston,MA,2135\n');
+let rows = T.parseDelimited('Name,Street,City,State,ZIP\n"Doe, Jane","12 Elm St\nUnit 4",Boston,MA,2108\n');
 ok(rows.length === 2 && rows[1][0] === 'Doe, Jane' && rows[1][1] === '12 Elm St\nUnit 4', 'csv quotes');
 // Excel paste (tabs)
-rows = T.parseDelimited('Jane Doe\tAcme\t12 Elm St\t\tBoston\tMA\t02135\nJohn Roe\t\t9 Oak Ave\tApt 2\tCambridge\tMA\t02139');
+rows = T.parseDelimited('Jane Doe\tAcme\t12 Elm St\t\tBoston\tMA\t02108\nJohn Roe\t\t9 Oak Ave\tApt 2\tCambridge\tMA\t02139');
 ok(rows.length === 2 && rows[1][3] === 'Apt 2', 'tsv');
 // Header mapping: Google Contacts style
-let g = T.rowsToAddresses(T.parseDelimited('First Name,Last Name,Organization Name,Address 1 - Street,Address 1 - City,Address 1 - Region,Address 1 - Postal Code,Address 1 - Country\nJane,Doe,,12 Elm St,Boston,MA,2135,United States\nNo,Address,,,,,,\n'));
+let g = T.rowsToAddresses(T.parseDelimited('First Name,Last Name,Organization Name,Address 1 - Street,Address 1 - City,Address 1 - Region,Address 1 - Postal Code,Address 1 - Country\nJane,Doe,,12 Elm St,Boston,MA,2108,United States\nNo,Address,,,,,,\n'));
 ok(g.length === 2, 'google rows ' + g.length);
 let lines = T.addressLines(g[0]);
-ok(JSON.stringify(lines) === JSON.stringify(['Jane Doe','12 Elm St','Boston, MA 02135']), 'google lines ' + JSON.stringify(lines));
+ok(JSON.stringify(lines) === JSON.stringify(['Jane Doe','12 Elm St','Boston, MA 02108']), 'google lines ' + JSON.stringify(lines));
 ok(T.addressLines(g[1]).length === 1, 'name-only row stays name only');
 // Formatted address column
 let fm = T.rowsToAddresses(T.parseDelimited('Name,Address 1 - Formatted\n"Ann Lee","5 Pine Rd\nSalem, MA 01970"\n'));
 ok(JSON.stringify(T.addressLines(fm[0])) === JSON.stringify(['Ann Lee','5 Pine Rd','Salem, MA 01970']), 'formatted ' + JSON.stringify(T.addressLines(fm[0])));
 // Positional (no header)
-let pos = T.rowsToAddresses([['Jane Doe','','12 Elm St','Apt 3','Boston','MA','2135']]);
-ok(JSON.stringify(T.addressLines(pos[0])) === JSON.stringify(['Jane Doe','12 Elm St Apt 3','Boston, MA 02135']), 'positional ' + JSON.stringify(T.addressLines(pos[0])));
+let pos = T.rowsToAddresses([['Jane Doe','','12 Elm St','Apt 3','Boston','MA','2108']]);
+ok(JSON.stringify(T.addressLines(pos[0])) === JSON.stringify(['Jane Doe','12 Elm St Apt 3','Boston, MA 02108']), 'positional ' + JSON.stringify(T.addressLines(pos[0])));
 // vCard (Apple style, folded line, item prefix)
-let vc = T.parseVCard('BEGIN:VCARD\r\nVERSION:3.0\r\nN:Doe;Jane;;;\r\nFN:Jane Doe\r\nORG:Acme Inc;\r\nitem1.ADR;type=HOME;type=pref:;;12 Elm St\\nUnit 4;Boston;MA;02135;United\r\n  States\r\nEND:VCARD\r\nBEGIN:VCARD\r\nFN:No Addr\r\nEND:VCARD\r\n');
+let vc = T.parseVCard('BEGIN:VCARD\r\nVERSION:3.0\r\nN:Doe;Jane;;;\r\nFN:Jane Doe\r\nORG:Acme Inc;\r\nitem1.ADR;type=HOME;type=pref:;;12 Elm St\\nUnit 4;Boston;MA;02108;United\r\n  States\r\nEND:VCARD\r\nBEGIN:VCARD\r\nFN:No Addr\r\nEND:VCARD\r\n');
 ok(vc.length === 1, 'vcard count ' + vc.length);
-ok(JSON.stringify(vc[0].lines) === JSON.stringify(['Jane Doe','Acme Inc','12 Elm St','Unit 4','Boston, MA 02135']), 'vcard lines ' + JSON.stringify(vc[0].lines));
+ok(JSON.stringify(vc[0].lines) === JSON.stringify(['Jane Doe','Acme Inc','12 Elm St','Unit 4','Boston, MA 02108']), 'vcard lines ' + JSON.stringify(vc[0].lines));
 // lines -> fields
-let f = T.linesToFields(['Jane Doe','12 Elm St Apt 3','Boston, MA 02135']);
-ok(f.name === 'Jane Doe' && f.street === '12 Elm St Apt 3' && f.city === 'Boston' && f.state === 'MA' && f.zip === '02135', 'linesToFields ' + JSON.stringify(f));
+let f = T.linesToFields(['Jane Doe','12 Elm St Apt 3','Boston, MA 02108']);
+ok(f.name === 'Jane Doe' && f.street === '12 Elm St Apt 3' && f.city === 'Boston' && f.state === 'MA' && f.zip === '02108', 'linesToFields ' + JSON.stringify(f));
 // Canada
 let ca = T.addressLines({ name: 'Jane Roe', street: '123 Main St', apt: '5', city: 'Toronto', state: 'on', zip: 'm5v3l9' });
 ok(JSON.stringify(ca) === JSON.stringify(['Jane Roe', '5-123 Main St', 'Toronto ON  M5V 3L9', 'CANADA']), 'canada from us ' + JSON.stringify(ca));
@@ -41,7 +41,7 @@ ok(T.regionCode('Massachusetts') === 'MA' && T.regionCode('Québec') === 'QC' &&
 // Fit: fake measure = 0.5 * size per character
 const measure = (text, css) => { const size = parseFloat(css.match(/([\d.]+)pt/)[1]); return text.length * size * 0.5; };
 const box = { width: 160, height: 60 };
-const short = [{ text: 'Jane Doe', size: 10 }, { text: '12 Elm St', size: 10 }, { text: 'Boston, MA 02135', size: 10 }];
+const short = [{ text: 'Jane Doe', size: 10 }, { text: '12 Elm St', size: 10 }, { text: 'Boston, MA 02108', size: 10 }];
 ok(T.fits(short, box, measure), 'short fits');
 const long = short.concat([{ text: 'Second line of a much longer company name here', size: 10 }, { text: 'Extra line', size: 10 }]);
 ok(!T.fits(long, box, measure), 'long does not fit');

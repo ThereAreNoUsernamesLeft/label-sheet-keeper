@@ -20,8 +20,8 @@ GEO_CALLS = []
 def fake_services(page):
     def zippo(route):
         url = route.request.url
-        if url.endswith('/us/02135'):
-            route.fulfill(json={'post code': '02135', 'places': [{'place name': 'Brighton', 'state abbreviation': 'MA'}]})
+        if url.endswith('/us/02108'):
+            route.fulfill(json={'post code': '02108', 'places': [{'place name': 'Boston', 'state abbreviation': 'MA'}]})
         elif url.endswith('/ca/M5V'):
             route.fulfill(json={'post code': 'M5V', 'places': [{'place name': 'Toronto (Downtown West)', 'state abbreviation': 'ON'}]})
         else:
@@ -32,16 +32,16 @@ def fake_services(page):
         if 'apiKey=badkeybadkeybadkey' in url:
             route.fulfill(status=401, json={'message': 'Invalid apiKey'}); return
         route.fulfill(json={'results': [
-            {'housenumber': '35', 'street': 'Maple Way', 'city': 'Boston', 'state_code': 'MA', 'postcode': '02135', 'country_code': 'us', 'address_line1': '35 Maple Way', 'address_line2': 'Boston, MA 02135, United States of America'},
+            {'housenumber': '8', 'street': 'Maple Way', 'city': 'Boston', 'state_code': 'MA', 'postcode': '02108', 'country_code': 'us', 'address_line1': '8 Maple Way', 'address_line2': 'Boston, MA 02108, United States of America'},
             {'housenumber': '290', 'street': 'Bremner Boulevard', 'city': 'Toronto', 'state_code': 'ON', 'postcode': 'M5V 3L9', 'country_code': 'ca', 'address_line1': '290 Bremner Boulevard', 'address_line2': 'Toronto, ON M5V 3L9, Canada'}]})
     def photon(route):
         url = route.request.url
         GEO_CALLS.append(url)
         route.fulfill(json={'type': 'FeatureCollection', 'features': [
-            {'type': 'Feature', 'properties': {'type': 'street', 'name': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02135', 'countrycode': 'US'}},
-            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '35', 'street': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02135', 'countrycode': 'US'}},
-            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '35', 'street': 'Maple Rue', 'city': 'Montréal', 'state': 'Québec', 'postcode': 'h2x1y4', 'countrycode': 'CA'}},
-            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '35', 'street': 'Maplestraße', 'city': 'Berlin', 'state': 'Berlin', 'postcode': '10115', 'countrycode': 'DE'}}]})
+            {'type': 'Feature', 'properties': {'type': 'street', 'name': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02108', 'countrycode': 'US'}},
+            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '8', 'street': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02108', 'countrycode': 'US'}},
+            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '8', 'street': 'Maple Rue', 'city': 'Montréal', 'state': 'Québec', 'postcode': 'h2x1y4', 'countrycode': 'CA'}},
+            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '8', 'street': 'Maplestraße', 'city': 'Berlin', 'state': 'Berlin', 'postcode': '10115', 'countrycode': 'DE'}}]})
     page.route('https://photon.komoot.io/**', photon)
     page.route('https://api.zippopotam.us/**', zippo)
     page.route('https://api.geoapify.com/**', geo)
@@ -144,7 +144,7 @@ try:
     # ================= B: editing saved addresses =================
     pg, errs = new_page(b, 'fmt=avery-5160')
     wait(pg, "!document.getElementById('v-sheet').hidden")
-    pg.evaluate("""localStorage.setItem('lsk.addressBook', JSON.stringify([{id:'a', name:'Ann Lee', lines:['Ann Lee','5 Pine Rd','Salem, MA 01970']}, {id:'b', name:'Bob Roe', lines:['Bob Roe','9 Oak Ave','Boston, MA 02135']}]))""")
+    pg.evaluate("""localStorage.setItem('lsk.addressBook', JSON.stringify([{id:'a', name:'Ann Lee', lines:['Ann Lee','5 Pine Rd','Salem, MA 01970']}, {id:'b', name:'Bob Roe', lines:['Bob Roe','9 Oak Ave','Boston, MA 02108']}]))""")
     pg.click('#fill-tabs button:has-text("Address")')
     pg.click('#pane-addr details.inner summary', position={'x': 30, 'y': 8})
     pg.click('#book-list li:first-child .addr')
@@ -176,7 +176,7 @@ try:
     refresh(pg); pg.click('#printed-btn')
     wait(pg, "(MOCK.settings.lskTrips||0) === 1")
     check(pg.evaluate("JSON.parse(localStorage.getItem('lsk.stock.avery-5160')).on") == 4, 'first print took a sheet off the stock')
-    pg.evaluate("MOCK.setLabelText(2, 'Bob Roe\\n9 Oak Ave\\nBoston, MA 02135', 10)"); refresh(pg); pg.click('#printed-btn')
+    pg.evaluate("MOCK.setLabelText(2, 'Bob Roe\\n9 Oak Ave\\nBoston, MA 02108', 10)"); refresh(pg); pg.click('#printed-btn')
     wait(pg, "(MOCK.settings.lskTrips||0) === 2")
     h = pg.evaluate("MOCK.settings.lskHistory")
     check(len(h) == 2 and h[1]['labels']['1'][0]['b'] and h[1]['stock'], 'history keeps each print’s text', h[1])

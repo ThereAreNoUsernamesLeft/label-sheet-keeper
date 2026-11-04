@@ -20,8 +20,8 @@ GEO_CALLS = []
 def fake_services(page):
     def zippo(route):
         url = route.request.url
-        if url.endswith('/us/02135'):
-            route.fulfill(json={'post code': '02135', 'places': [{'place name': 'Brighton', 'state abbreviation': 'MA'}]})
+        if url.endswith('/us/02108'):
+            route.fulfill(json={'post code': '02108', 'places': [{'place name': 'Boston', 'state abbreviation': 'MA'}]})
         elif url.endswith('/ca/M5V'):
             route.fulfill(json={'post code': 'M5V', 'places': [{'place name': 'Toronto (Downtown West)', 'state abbreviation': 'ON'}]})
         else:
@@ -32,16 +32,16 @@ def fake_services(page):
         if 'apiKey=badkeybadkeybadkey' in url:
             route.fulfill(status=401, json={'message': 'Invalid apiKey'}); return
         route.fulfill(json={'results': [
-            {'housenumber': '35', 'street': 'Maple Way', 'city': 'Boston', 'state_code': 'MA', 'postcode': '02135', 'country_code': 'us', 'address_line1': '35 Maple Way', 'address_line2': 'Boston, MA 02135, United States of America'},
+            {'housenumber': '8', 'street': 'Maple Way', 'city': 'Boston', 'state_code': 'MA', 'postcode': '02108', 'country_code': 'us', 'address_line1': '8 Maple Way', 'address_line2': 'Boston, MA 02108, United States of America'},
             {'housenumber': '290', 'street': 'Bremner Boulevard', 'city': 'Toronto', 'state_code': 'ON', 'postcode': 'M5V 3L9', 'country_code': 'ca', 'address_line1': '290 Bremner Boulevard', 'address_line2': 'Toronto, ON M5V 3L9, Canada'}]})
     def photon(route):
         url = route.request.url
         GEO_CALLS.append(url)
         route.fulfill(json={'type': 'FeatureCollection', 'features': [
-            {'type': 'Feature', 'properties': {'type': 'street', 'name': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02135', 'countrycode': 'US'}},
-            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '35', 'street': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02135', 'countrycode': 'US'}},
-            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '35', 'street': 'Maple Rue', 'city': 'Montréal', 'state': 'Québec', 'postcode': 'h2x1y4', 'countrycode': 'CA'}},
-            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '35', 'street': 'Maplestraße', 'city': 'Berlin', 'state': 'Berlin', 'postcode': '10115', 'countrycode': 'DE'}}]})
+            {'type': 'Feature', 'properties': {'type': 'street', 'name': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02108', 'countrycode': 'US'}},
+            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '8', 'street': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02108', 'countrycode': 'US'}},
+            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '8', 'street': 'Maple Rue', 'city': 'Montréal', 'state': 'Québec', 'postcode': 'h2x1y4', 'countrycode': 'CA'}},
+            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '8', 'street': 'Maplestraße', 'city': 'Berlin', 'state': 'Berlin', 'postcode': '10115', 'countrycode': 'DE'}}]})
     page.route('https://photon.komoot.io/**', photon)
     page.route('https://api.zippopotam.us/**', zippo)
     page.route('https://api.geoapify.com/**', geo)
@@ -117,7 +117,7 @@ try:
     sk = pg.evaluate("JSON.parse(localStorage.getItem('lsk.stock.avery-5160'))")
     check(sk == {'on': 3, 'pack': 10, 'warn': 2, 'packs': 2, 'link': 'https://www.amazon.com/Avery-Address-Labels-Printers-5160/dp/B00004Z5SP?th=1'}, 'stock saved', sk)
     check('(3 sheets)' in pg.inner_text('#stock-box summary'), 'stock count in the heading', pg.inner_text('#stock-box summary'))
-    pg.evaluate("MOCK.setLabelText(1, 'A Person\\n1 Elm St\\nBoston, MA 02135', 10)"); refresh(pg)
+    pg.evaluate("MOCK.setLabelText(1, 'A Person\\n1 Elm St\\nBoston, MA 02108', 10)"); refresh(pg)
     pg.click('#printed-btn')
     check(wait(pg, "JSON.parse(localStorage.getItem('lsk.stock.avery-5160')).on === 2"), 'first trip takes a sheet off the count')
     check(wait(pg, "!document.getElementById('stock-low').hidden") and '2 sheets of these labels left' in pg.inner_text('#stock-low-msg'), 'low-stock reminder', pg.inner_text('#stock-low-msg') if pg.is_visible('#stock-low') else '')
@@ -125,7 +125,7 @@ try:
     check(wait(pg, "JSON.parse(localStorage.getItem('lsk.stock.avery-5160')).on === 3 && document.getElementById('stock-low').hidden"), 'undo puts the sheet back')
     pg.click('#printed-btn')
     wait(pg, "JSON.parse(localStorage.getItem('lsk.stock.avery-5160')).on === 2")
-    pg.evaluate("MOCK.setLabelText(2, 'B Person\\n2 Elm St\\nBoston, MA 02135', 10)"); refresh(pg)
+    pg.evaluate("MOCK.setLabelText(2, 'B Person\\n2 Elm St\\nBoston, MA 02108', 10)"); refresh(pg)
     pg.click('#printed-btn')
     check(wait(pg, "(MOCK.settings.lskTrips||0) === 2") and pg.evaluate("JSON.parse(localStorage.getItem('lsk.stock.avery-5160')).on") == 2, 'second trip of the same sheet doesn’t count again')
     pg.click('#stock-low-order')
@@ -139,7 +139,7 @@ try:
     check(pg.evaluate("MOCK.browser[MOCK.browser.length-1]") == 'https://www.staples.com/avery-5160/product_123' and 'product page at Staples' in say(pg), 'other stores open the product page', say(pg))
     pg.click('#reset-btn'); pg.click('#confirm-yes')
     wait(pg, "(MOCK.settings.lskTrips||0) === 0")
-    pg.evaluate("MOCK.setLabelText(3, 'C Person\\n3 Elm St\\nBoston, MA 02135', 10)"); refresh(pg)
+    pg.evaluate("MOCK.setLabelText(3, 'C Person\\n3 Elm St\\nBoston, MA 02108', 10)"); refresh(pg)
     pg.click('#printed-btn')
     check(wait(pg, "JSON.parse(localStorage.getItem('lsk.stock.avery-5160')).on === 11"), 'a fresh sheet after Reset counts again')
     pg.click('#stock-off')
@@ -197,7 +197,7 @@ try:
     pg, errs = new_page(b, 'fmt=avery-5160')
     wait(pg, "!document.getElementById('v-sheet').hidden")
     pg.evaluate("""() => { const r = {}; r.other = {id:'other', fmtId:'avery-5160', fmtName:'Address labels, 30 per sheet', file:'Old labels.docx', url:'/x/Old labels.docx', open:12, ready:0, trips:1, at:Date.now()}; localStorage.setItem('lsk.sheets', JSON.stringify(r)); }""")
-    pg.evaluate("MOCK.setLabelText(1, 'Copy Me\\n1 Elm St\\nBoston, MA 02135', 10)"); select_label(pg, 1); refresh(pg)
+    pg.evaluate("MOCK.setLabelText(1, 'Copy Me\\n1 Elm St\\nBoston, MA 02108', 10)"); select_label(pg, 1); refresh(pg)
     pg.fill('#copies', '33'); pg.click('#copy-btn')
     check(wait(pg, "!document.getElementById('confirm').hidden") and '29 copies go on this sheet' in pg.inner_text('#confirm-msg'), 'copies overflow asks too', pg.inner_text('#confirm-msg') if pg.is_visible('#confirm') else '')
     pg.click('#confirm-alt')

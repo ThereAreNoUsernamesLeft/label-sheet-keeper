@@ -20,8 +20,8 @@ GEO_CALLS = []
 def fake_services(page):
     def zippo(route):
         url = route.request.url
-        if url.endswith('/us/02135'):
-            route.fulfill(json={'post code': '02135', 'places': [{'place name': 'Brighton', 'state abbreviation': 'MA'}]})
+        if url.endswith('/us/02108'):
+            route.fulfill(json={'post code': '02108', 'places': [{'place name': 'Boston', 'state abbreviation': 'MA'}]})
         elif url.endswith('/ca/M5V'):
             route.fulfill(json={'post code': 'M5V', 'places': [{'place name': 'Toronto (Downtown West)', 'state abbreviation': 'ON'}]})
         else:
@@ -32,16 +32,16 @@ def fake_services(page):
         if 'apiKey=badkeybadkeybadkey' in url:
             route.fulfill(status=401, json={'message': 'Invalid apiKey'}); return
         route.fulfill(json={'results': [
-            {'housenumber': '35', 'street': 'Maple Way', 'city': 'Boston', 'state_code': 'MA', 'postcode': '02135', 'country_code': 'us', 'address_line1': '35 Maple Way', 'address_line2': 'Boston, MA 02135, United States of America'},
+            {'housenumber': '8', 'street': 'Maple Way', 'city': 'Boston', 'state_code': 'MA', 'postcode': '02108', 'country_code': 'us', 'address_line1': '8 Maple Way', 'address_line2': 'Boston, MA 02108, United States of America'},
             {'housenumber': '290', 'street': 'Bremner Boulevard', 'city': 'Toronto', 'state_code': 'ON', 'postcode': 'M5V 3L9', 'country_code': 'ca', 'address_line1': '290 Bremner Boulevard', 'address_line2': 'Toronto, ON M5V 3L9, Canada'}]})
     def photon(route):
         url = route.request.url
         GEO_CALLS.append(url)
         route.fulfill(json={'type': 'FeatureCollection', 'features': [
-            {'type': 'Feature', 'properties': {'type': 'street', 'name': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02135', 'countrycode': 'US'}},
-            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '35', 'street': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02135', 'countrycode': 'US'}},
-            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '35', 'street': 'Maple Rue', 'city': 'Montréal', 'state': 'Québec', 'postcode': 'h2x1y4', 'countrycode': 'CA'}},
-            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '35', 'street': 'Maplestraße', 'city': 'Berlin', 'state': 'Berlin', 'postcode': '10115', 'countrycode': 'DE'}}]})
+            {'type': 'Feature', 'properties': {'type': 'street', 'name': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02108', 'countrycode': 'US'}},
+            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '8', 'street': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02108', 'countrycode': 'US'}},
+            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '8', 'street': 'Maple Rue', 'city': 'Montréal', 'state': 'Québec', 'postcode': 'h2x1y4', 'countrycode': 'CA'}},
+            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '8', 'street': 'Maplestraße', 'city': 'Berlin', 'state': 'Berlin', 'postcode': '10115', 'countrycode': 'DE'}}]})
     page.route('https://photon.komoot.io/**', photon)
     page.route('https://api.zippopotam.us/**', zippo)
     page.route('https://api.geoapify.com/**', geo)
@@ -123,7 +123,7 @@ try:
     pg, errs = new_page(b, 'fmt=avery-5160')
     wait(pg, "!document.getElementById('v-sheet').hidden")
     pg.evaluate("""localStorage.setItem('lsk.addressBook', JSON.stringify([{id:'a', name:'Ann Lee', lines:['Ann Lee','5 Pine Rd','Salem, MA 01970']}]));
-      localStorage.setItem('lsk.recent', JSON.stringify(Array.from({length: 10}, (_, i) => ({lines: ['Old ' + i, i + ' Elm St', 'Boston, MA 02135'], at: 1}))));""")
+      localStorage.setItem('lsk.recent', JSON.stringify(Array.from({length: 10}, (_, i) => ({lines: ['Old ' + i, i + ' Elm St', 'Boston, MA 02108'], at: 1}))));""")
     pg.click('#fill-tabs button:has-text("Address")')
     pg.fill('#addr-text', 'Zed New\n1 Main St\nSalem, MA 01970'); pg.click('#addr-one')
     wait(pg, "Object.values(LSK_TEST.st().texts).some(t => t.indexOf('Zed New') === 0)")
@@ -132,14 +132,14 @@ try:
     groups = pg.evaluate("Array.from(document.querySelectorAll('#addr-pick optgroup')).map(g => [g.label, g.children.length])")
     check(groups == [['Recent', 10], ['Address book', 1]], 'one dropdown with Recent and Address book', groups)
     pg.select_option('#addr-pick', 'recent:3')
-    check(pg.input_value('#addr-text') == 'Old 2\n2 Elm St\nBoston, MA 02135' and pg.input_value('#addr-pick') == '', 'choosing a recent address fills it in', pg.input_value('#addr-text'))
+    check(pg.input_value('#addr-text') == 'Old 2\n2 Elm St\nBoston, MA 02108' and pg.input_value('#addr-pick') == '', 'choosing a recent address fills it in', pg.input_value('#addr-text'))
     pg.click('#addr-one'); wait(pg, "JSON.parse(localStorage.getItem('lsk.recent'))[0].lines[0] === 'Old 2'")
     r = pg.evaluate("JSON.parse(localStorage.getItem('lsk.recent')).map(x => x.lines[0])")
     check(r[0] == 'Old 2' and r.count('Old 2') == 1 and len(r) == 10, 'using one again moves it up without a copy', r)
     pg.select_option('#addr-pick', 'a')
     check(pg.input_value('#addr-text').startswith('Ann Lee'), 'address book entries still work')
     pg.click('#fill-tabs button:has-text("Table")'); pg.click('#table-open'); wait(pg, "!!MOCK.dialog")
-    pg.evaluate("rows => MOCK.dialog.send({type:'fill', rows})", [['Table Person', '', '1 A St', '', 'Boston', 'MA', '02135']])
+    pg.evaluate("rows => MOCK.dialog.send({type:'fill', rows})", [['Table Person', '', '1 A St', '', 'Boston', 'MA', '02108']])
     wait(pg, "Object.values(LSK_TEST.st().texts).some(t => t.indexOf('Table Person') === 0)")
     check('Table Person' not in str(pg.evaluate("localStorage.getItem('lsk.recent')")), 'table fills don’t crowd Recent')
     check(not [e for e in errs if 'favicon' not in e], 'no script errors (B)', errs)
@@ -161,7 +161,7 @@ try:
     # ================= C: address book groups =================
     pg, errs = new_page(b, 'fmt=avery-5160')
     wait(pg, "!document.getElementById('v-sheet').hidden")
-    pg.evaluate("""localStorage.setItem('lsk.addressBook', JSON.stringify([{id:'a', name:'Ann Lee', lines:['Ann Lee','5 Pine Rd','Salem, MA 01970']}, {id:'b', name:'Bob Roe', lines:['Bob Roe','9 Oak Ave','Boston, MA 02135']}, {id:'c', name:'Cy Fox', lines:['Cy Fox','2 Elm St','Lynn, MA 01901']}]))""")
+    pg.evaluate("""localStorage.setItem('lsk.addressBook', JSON.stringify([{id:'a', name:'Ann Lee', lines:['Ann Lee','5 Pine Rd','Salem, MA 01970']}, {id:'b', name:'Bob Roe', lines:['Bob Roe','9 Oak Ave','Boston, MA 02108']}, {id:'c', name:'Cy Fox', lines:['Cy Fox','2 Elm St','Lynn, MA 01901']}]))""")
     pg.click('#fill-tabs button:has-text("Address")')
     pg.click('#pane-addr details.inner summary', position={'x': 30, 'y': 8})
     check(not pg.is_visible('#group-row'), 'no group filter until there are groups')
@@ -190,7 +190,7 @@ try:
     tp.route('**/office.js', lambda r: r.fulfill(body='', content_type='application/javascript'))
     tp.goto('http://127.0.0.1:%d/table.html' % PORT)
     tp.evaluate("""localStorage.setItem('lsk.tableInfo', JSON.stringify({open: 5, labels: [1,2,3,4,5], name: 'Address labels, 30 per sheet', per: 30})); localStorage.setItem('lsk.tableDraft','[]');
-      localStorage.setItem('lsk.addressBook', JSON.stringify([{id:'a', name:'Ann Lee', lines:['Ann Lee','5 Pine Rd','Salem, MA 01970'], groups:['Family']}, {id:'b', name:'Bob Roe', lines:['Bob Roe','9 Oak Ave','Boston, MA 02135']}, {id:'c', name:'Cy Fox', lines:['Cy Fox','2 Elm St','Lynn, MA 01901'], groups:['family','Work']}]))""")
+      localStorage.setItem('lsk.addressBook', JSON.stringify([{id:'a', name:'Ann Lee', lines:['Ann Lee','5 Pine Rd','Salem, MA 01970'], groups:['Family']}, {id:'b', name:'Bob Roe', lines:['Bob Roe','9 Oak Ave','Boston, MA 02108']}, {id:'c', name:'Cy Fox', lines:['Cy Fox','2 Elm St','Lynn, MA 01901'], groups:['family','Work']}]))""")
     tp.reload(); tp.wait_for_timeout(300)
     opts = tp.evaluate("Array.from(document.querySelectorAll('#book option')).map(o => o.textContent)")
     check('Add group: Family (2)' in opts and 'Add group: Work (1)' in opts, 'the table window can add a whole group', opts)

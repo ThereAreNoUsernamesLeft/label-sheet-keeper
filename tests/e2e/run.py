@@ -20,8 +20,8 @@ GEO_CALLS = []
 def fake_services(page):
     def zippo(route):
         url = route.request.url
-        if url.endswith('/us/02135'):
-            route.fulfill(json={'post code': '02135', 'places': [{'place name': 'Brighton', 'state abbreviation': 'MA'}]})
+        if url.endswith('/us/02108'):
+            route.fulfill(json={'post code': '02108', 'places': [{'place name': 'Boston', 'state abbreviation': 'MA'}]})
         elif url.endswith('/ca/M5V'):
             route.fulfill(json={'post code': 'M5V', 'places': [{'place name': 'Toronto (Downtown West)', 'state abbreviation': 'ON'}]})
         else:
@@ -32,16 +32,16 @@ def fake_services(page):
         if 'apiKey=badkeybadkeybadkey' in url:
             route.fulfill(status=401, json={'message': 'Invalid apiKey'}); return
         route.fulfill(json={'results': [
-            {'housenumber': '35', 'street': 'Maple Way', 'city': 'Boston', 'state_code': 'MA', 'postcode': '02135', 'country_code': 'us', 'address_line1': '35 Maple Way', 'address_line2': 'Boston, MA 02135, United States of America'},
+            {'housenumber': '8', 'street': 'Maple Way', 'city': 'Boston', 'state_code': 'MA', 'postcode': '02108', 'country_code': 'us', 'address_line1': '8 Maple Way', 'address_line2': 'Boston, MA 02108, United States of America'},
             {'housenumber': '290', 'street': 'Bremner Boulevard', 'city': 'Toronto', 'state_code': 'ON', 'postcode': 'M5V 3L9', 'country_code': 'ca', 'address_line1': '290 Bremner Boulevard', 'address_line2': 'Toronto, ON M5V 3L9, Canada'}]})
     def photon(route):
         url = route.request.url
         GEO_CALLS.append(url)
         route.fulfill(json={'type': 'FeatureCollection', 'features': [
-            {'type': 'Feature', 'properties': {'type': 'street', 'name': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02135', 'countrycode': 'US'}},
-            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '35', 'street': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02135', 'countrycode': 'US'}},
-            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '35', 'street': 'Maple Rue', 'city': 'Montréal', 'state': 'Québec', 'postcode': 'h2x1y4', 'countrycode': 'CA'}},
-            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '35', 'street': 'Maplestraße', 'city': 'Berlin', 'state': 'Berlin', 'postcode': '10115', 'countrycode': 'DE'}}]})
+            {'type': 'Feature', 'properties': {'type': 'street', 'name': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02108', 'countrycode': 'US'}},
+            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '8', 'street': 'Maple Way', 'city': 'Boston', 'state': 'Massachusetts', 'postcode': '02108', 'countrycode': 'US'}},
+            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '8', 'street': 'Maple Rue', 'city': 'Montréal', 'state': 'Québec', 'postcode': 'h2x1y4', 'countrycode': 'CA'}},
+            {'type': 'Feature', 'properties': {'type': 'house', 'housenumber': '8', 'street': 'Maplestraße', 'city': 'Berlin', 'state': 'Berlin', 'postcode': '10115', 'countrycode': 'DE'}}]})
     page.route('https://photon.komoot.io/**', photon)
     page.route('https://api.zippopotam.us/**', zippo)
     page.route('https://api.geoapify.com/**', geo)
@@ -98,7 +98,7 @@ try:
     pg.click('.cell[data-n="2"]')
     check(wait(pg, "MOCK.labelCell(2).ccs.length === 0"), 'click used label makes it open')
 
-    pg.evaluate("MOCK.setLabelText(8, 'Jane Doe\\n12 Elm St\\nBoston, MA 02135', 10)")
+    pg.evaluate("MOCK.setLabelText(8, 'Jane Doe\\n12 Elm St\\nBoston, MA 02108', 10)")
     select_label(pg, 8); refresh(pg)
     check(pg.evaluate("LSK_TEST.st().ready[8] === true && LSK_TEST.st().here === 8"), 'typed label detected as ready, cursor in it')
     pg.evaluate("MOCK.labelCell(8).paras[2].leftIndent = 18")
@@ -109,7 +109,7 @@ try:
     check(pg.evaluate("MOCK.labelCell(4).paras[2].leftIndent === 18"), 'copy keeps the last line\'s layout', pg.evaluate("MOCK.labelCell(4).paras.map(p => p.leftIndent)"))
 
     # Fit text
-    pg.evaluate("MOCK.setLabelText(9, 'Jane Doe Long Name Company Incorporated Worldwide\\n12345 Very Long Street Name Boulevard Suite 100\\nBoston, MA 02135\\nExtra line here\\nAnother line here', 12)")
+    pg.evaluate("MOCK.setLabelText(9, 'Jane Doe Long Name Company Incorporated Worldwide\\n12345 Very Long Street Name Boulevard Suite 100\\nBoston, MA 02108\\nExtra line here\\nAnother line here', 12)")
     refresh(pg)
     check(pg.evaluate("LSK_TEST.st().over[9] === true"), 'overflow detected on label 9')
     check(pg.is_visible('#fit-warn') and 'label 9' in pg.inner_text('#fit-warn'), 'fit warning shown', pg.inner_text('#fit-warn') if pg.is_visible('#fit-warn') else 'hidden')
@@ -203,13 +203,13 @@ try:
 
     # Address tab with a design, address book, import
     pg.click('#fill-tabs button:has-text("Address")')
-    pg.fill('#addr-text', 'Pat Example\n35 Test Way\nBrighton, MA 02135')
+    pg.fill('#addr-text', 'Pat Example\n8 Test Way\nBoston, MA 02108')
     pg.click('.design:has-text("Bold name")')
     pg.click('#addr-one')
     check(wait(pg, "Object.values(LSK_TEST.st().texts).some(t => t.indexOf('Pat Example') === 0)"), 'address placed on next open label')
     n_addr = pg.evaluate("Number(Object.keys(LSK_TEST.st().texts).find(k => LSK_TEST.st().texts[k].indexOf('Pat Example') === 0))")
     check(pg.evaluate("n => MOCK.labelCell(n).paras[0].font.bold === true && MOCK.labelCell(n).paras[1].font.bold === false", n_addr), 'bold name design applied')
-    check(pg.evaluate("n => JSON.stringify(MOCK.labelCell(n).paras.map(p => p.text)) === JSON.stringify(['Pat Example', '35 Test Way', 'Brighton, MA 02135'])", n_addr), 'address lines are separate paragraphs', pg.evaluate("n => MOCK.labelCell(n).paras.map(p => p.text)", n_addr))
+    check(pg.evaluate("n => JSON.stringify(MOCK.labelCell(n).paras.map(p => p.text)) === JSON.stringify(['Pat Example', '8 Test Way', 'Boston, MA 02108'])", n_addr), 'address lines are separate paragraphs', pg.evaluate("n => MOCK.labelCell(n).paras.map(p => p.text)", n_addr))
     check(pg.evaluate("MOCK.calls.indexOf('cell.insertParagraph.End') < 0"), 'no paragraphs added at the end of a cell (Word for Mac joins them)')
     pg.click('#addr-save'); pg.click('#addr-mine')
     pg.click('#pane-addr details summary')
@@ -363,7 +363,7 @@ try:
     check(nums == ['2', '5', '9', '1', '2'], 'first column shows the label each row goes on', nums)
     div = tp.evaluate("(() => { const d = document.querySelector('#rows tr.divider'); return d ? [d.textContent, Array.from(d.parentNode.children).indexOf(d)] : null; })()")
     check(div and 'Extra sheet 1' in div[0] and div[1] == 3, 'divider marks where rows stop fitting', div)
-    tp.evaluate("""() => { const inp = document.querySelector('#rows input'); inp.focus(); const dt = new DataTransfer(); dt.setData('text/plain', 'Jane Doe\\tAcme\\t12 Elm St\\t\\tBoston\\tMA\\t02135\\nJohn Roe\\t\\t9 Oak Ave\\tApt 2\\tCambridge\\tMA\\t02139\\n');
+    tp.evaluate("""() => { const inp = document.querySelector('#rows input'); inp.focus(); const dt = new DataTransfer(); dt.setData('text/plain', 'Jane Doe\\tAcme\\t12 Elm St\\t\\tBoston\\tMA\\t02108\\nJohn Roe\\t\\t9 Oak Ave\\tApt 2\\tCambridge\\tMA\\t02139\\n');
       inp.dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true})); }""")
     rows = tp.evaluate("LSK_TABLE.readRows()")
     check(len(rows) == 2 and rows[1][3] == 'Apt 2' and rows[0][1] == 'Acme', 'pasting cells from Excel fills the table', rows)
@@ -374,38 +374,38 @@ try:
     check('1 row doesn’t fit on it' in tp.inner_text('#count'), 'count shows rows that don’t fit', tp.inner_text('#count'))
     # ZIP and postal code fill in the city
     tp.evaluate("localStorage.removeItem('lsk.geoKey')")
-    tp.evaluate("() => { const r = document.querySelectorAll('#rows tr.row')[5].querySelectorAll('input'); r[0].value = 'Zip Test'; r[6].value = '02135'; r[6].dispatchEvent(new Event('input', {bubbles: true})); }")
-    check(wait(tp, "(() => { const r = document.querySelectorAll('#rows tr.row')[5].querySelectorAll('input'); return r[4].value === 'Brighton' && r[5].value === 'MA'; })()"), 'ZIP code fills city and state')
+    tp.evaluate("() => { const r = document.querySelectorAll('#rows tr.row')[5].querySelectorAll('input'); r[0].value = 'Zip Test'; r[6].value = '02108'; r[6].dispatchEvent(new Event('input', {bubbles: true})); }")
+    check(wait(tp, "(() => { const r = document.querySelectorAll('#rows tr.row')[5].querySelectorAll('input'); return r[4].value === 'Boston' && r[5].value === 'MA'; })()"), 'ZIP code fills city and state')
     tp.evaluate("() => { const r = document.querySelectorAll('#rows tr.row')[6].querySelectorAll('input'); r[0].value = 'Postal Test'; r[6].value = 'm5v3l9'; r[6].dispatchEvent(new Event('input', {bubbles: true})); }")
     check(wait(tp, "(() => { const r = document.querySelectorAll('#rows tr.row')[6].querySelectorAll('input'); return r[4].value === 'Toronto' && r[5].value === 'ON' && r[6].value === 'M5V 3L9'; })()"), 'postal code fills city and province and tidies the code',
           tp.evaluate("Array.from(document.querySelectorAll('#rows tr.row')[6].querySelectorAll('input')).map(i => i.value)"))
     # Suggestions without a key come from Photon
     tp.click('#more')
     tp.evaluate("document.querySelectorAll('#rows tr.row')[8].querySelector('input[aria-label=street]').focus()")
-    tp.keyboard.type('35 Maple')
+    tp.keyboard.type('8 Maple')
     check(wait(tp, "!document.getElementById('sugg').hidden && document.querySelectorAll('#sugg-list button').length === 2"), 'Photon suggestions appear without a key (US and Canada only, no duplicates)',
           tp.evaluate("Array.from(document.querySelectorAll('#sugg-list button')).map(b => b.textContent)"))
     check('Photon by Komoot' in tp.inner_text('#sugg') and 'OpenStreetMap' in tp.inner_text('#sugg'), 'Photon and OpenStreetMap credited')
     check(any('photon.komoot.io' in u and 'countrycode=US' in u for u in GEO_CALLS), 'Photon asked for US and Canada only')
     tp.keyboard.press('ArrowDown'); tp.keyboard.press('ArrowDown'); tp.keyboard.press('Enter')
     vals = tp.evaluate("Array.from(document.querySelectorAll('#rows tr.row')[8].querySelectorAll('input')).map(i => i.value)")
-    check(vals[2] == '35 Maple Rue' and vals[4] == 'Montréal' and vals[5] == 'QC' and vals[6] == 'H2X 1Y4', 'Photon suggestion fills a Canadian row with province code and postal code', vals)
+    check(vals[2] == '8 Maple Rue' and vals[4] == 'Montréal' and vals[5] == 'QC' and vals[6] == 'H2X 1Y4', 'Photon suggestion fills a Canadian row with province code and postal code', vals)
     tp.evaluate("localStorage.setItem('lsk.suggest', 'off')")
     tp.evaluate("document.querySelectorAll('#rows tr.row')[9].querySelector('input[aria-label=street]').focus()")
-    tp.keyboard.type('35 Maple')
+    tp.keyboard.type('8 Maple')
     tp.wait_for_timeout(700)
     check(tp.evaluate("document.getElementById('sugg').hidden"), 'no suggestions when turned off in Settings')
     tp.evaluate("localStorage.removeItem('lsk.suggest')")
     # Suggestions with a key come from Geoapify
     tp.evaluate("localStorage.setItem('lsk.geoKey', '0123456789abcdef0123456789abcdef')")
     tp.evaluate("document.querySelectorAll('#rows tr.row')[7].querySelector('input[aria-label=street]').focus()")
-    tp.keyboard.type('35 Maple')
+    tp.keyboard.type('8 Maple')
     check(wait(tp, "!document.getElementById('sugg').hidden && document.querySelectorAll('#sugg-list button').length === 2"), 'street suggestions appear')
     check('Powered by Geoapify' in tp.inner_text('#sugg'), 'Geoapify credit shown with its suggestions')
     tp.screenshot(path=OUT + '/s4-sugg.png')
     tp.keyboard.press('ArrowDown'); tp.keyboard.press('Enter')
     vals = tp.evaluate("Array.from(document.querySelectorAll('#rows tr.row')[7].querySelectorAll('input')).map(i => i.value)")
-    check(vals[2] == '35 Maple Way' and vals[4] == 'Boston' and vals[5] == 'MA' and vals[6] == '02135' and tp.evaluate("document.getElementById('sugg').hidden"), 'choosing a suggestion fills the row', vals)
+    check(vals[2] == '8 Maple Way' and vals[4] == 'Boston' and vals[5] == 'MA' and vals[6] == '02108' and tp.evaluate("document.getElementById('sugg').hidden"), 'choosing a suggestion fills the row', vals)
     check(tp.evaluate("document.activeElement.getAttribute('aria-label')") == 'apt', 'cursor moves to Apt/Suite after choosing')
     tp.screenshot(path=OUT + '/s4-table.png')
     check(not terrs, 'no script errors (table window)', terrs)
