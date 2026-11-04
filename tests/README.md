@@ -10,6 +10,7 @@ From the repository folder:
 
 ```
 node tests/tools-test.js           # address, CSV, barcode and scan-measuring helpers
+node tests/worker-test.mjs         # the Cloudflare Worker's request handling (worker/)
 python3 tests/e2e/run.py           # sheets, printing, addresses, table window, shipping labels
 python3 tests/e2e/run15.py         # stock, fill other sheets first, numbers and codes, scans, backups
 python3 tests/e2e/run16.py         # sheet list clean-up, editing addresses, undoing older prints
