@@ -75,6 +75,12 @@ If your printer has a scanner, the panel can measure the test page for you: scan
 - **Address:** fill in From and Ship to (or pick a saved address). Your return address is remembered.
 - Print the test page once and tell the panel which half of your sheet Label 1 came out on; from then on it says "top label" and "bottom label."
 
+### Send labels from your phone
+
+In **Settings › Your phone**, click **Link your phone** and scan the QR code with your phone's camera. It opens a small sending page (`phone.html`): tap **Choose a label** to send a return-label PDF or screenshot. On an iPhone, the page also explains how to add a **Send to Label Sheet Keeper** shortcut to the Share button, so a label in Mail, Files or Photos is two taps away.
+
+Labels you send show up on shipping-label sheets as "1 label from your phone." **Use it** opens the label like a chosen file (several go on the waiting list). Labels wait on the Label Sheet Keeper server (the Cloudflare Worker in `worker/`) until the panel picks them up, for 7 days at most, and are deleted from it once picked up. The phone only knows a sending address; reading labels takes a key that stays on your Mac (and out of backups). **Unlink** stops the sending address and deletes anything still waiting.
+
 ### Address suggestions
 
 In the table window, type a house number and street, and the panel suggests matching US and Canadian addresses. Pick one to fill in the street, city, state or province, and ZIP or postal code. A ZIP code or postal code on its own also fills in the city (using the free Zippopotam.us service).
@@ -158,3 +164,6 @@ The version Word shows under the add-in's Security Info comes from `manifest.xml
 | `vendor/jszip/` | JSZip 3.10.1 (MIT license), used to build and read Word and Excel files |
 | `vendor/qrcode-generator/` | qrcode-generator 2.0.4 by Kazuhiko Arase (MIT license), used to make QR codes. "QR Code" is a registered trademark of DENSO WAVE INCORPORATED |
 | `index.html` | This project's web page with the setup steps |
+| `phone.html` | The page a linked phone uses to send labels to the panel |
+| `worker/` | The Label Sheet Keeper server, a Cloudflare Worker at `api.labelsheetkeeper.workers.dev`. GitHub deploys it after every check passes |
+| `tests/` | Checks GitHub runs before each update goes live (see `tests/README.md`) |

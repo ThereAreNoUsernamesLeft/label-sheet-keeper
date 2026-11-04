@@ -51,6 +51,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: python tests/e2e/run17.py
 
+      - name: Sending labels from a phone
+        if: ${{ !cancelled() }}
+        run: python tests/e2e/run18.py
+
       - name: Worker request handling
         if: ${{ !cancelled() }}
         run: node tests/worker-test.mjs
@@ -136,3 +140,25 @@ jobs:
             echo "::error title=Worker check::No healthy answer from $WORKER_URL/health"
             exit 1
           fi
+
+      # Links a throwaway mailbox, sends a real PDF through the live Worker,
+      # reads it back, then unlinks (which deletes everything it made).
+      - name: Check sending a label end to end
+        run: |
+          fail() { echo "::error title=Phone mailbox check::$1"; exit 1; }
+          PDF=tests/fixtures/sample-return-label.pdf
+          pair=$(curl -fsS -X POST -H 'Origin: https://labelsheetkeeper.github.io' "$WORKER_URL/pair") || fail "Linking failed"
+          box=$(echo "$pair" | jq -r .box); key=$(echo "$pair" | jq -r .key)
+          [ "${#box}" -eq 22 ] || fail "No mailbox in the answer"
+          echo "::add-mask::$key"
+          sent=$(curl -sS -X POST --data-binary @"$PDF" -H 'X-File-Name: check.pdf' "$WORKER_URL/drop/$box?reply=text")
+          [ "$sent" = "Sent to Label Sheet Keeper." ] || fail "Sending answered: $sent"
+          list=$(curl -fsS -H "Authorization: Bearer $key" "$WORKER_URL/box/$box") || fail "Listing failed"
+          [ "$(echo "$list" | jq -r '.items[0].name')" = "check.pdf" ] || fail "The label wasn't listed: $list"
+          id=$(echo "$list" | jq -r '.items[0].id')
+          curl -fsS -H "Authorization: Bearer $key" "$WORKER_URL/box/$box/$id" -o got.pdf || fail "Fetching the label failed"
+          cmp -s got.pdf "$PDF" || fail "The label came back different"
+          curl -fsS -X DELETE -H "Authorization: Bearer $key" "$WORKER_URL/box/$box" > /dev/null || fail "Unlinking failed"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST --data-binary @"$PDF" "$WORKER_URL/drop/$box")
+          [ "$code" = "404" ] || fail "An unlinked sending address still answered $code"
+          echo "::notice title=Phone mailbox check::A label went through the live Worker and back, then everything was deleted."

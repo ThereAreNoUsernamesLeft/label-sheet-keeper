@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-title" content="Send label">
+<meta name="theme-color" content="#0D6B66">
+<link rel="apple-touch-icon" href="assets/icon-128.png">
+<title>Send a label · Label Sheet Keeper</title>
+<style>
+  :root{
+    --bg:#F4F6F5; --surface:#FFFFFF; --sunken:#EDF1EF; --line:#D2D9D6; --ink:#17212A; --muted:#55636E;
+    --accent:#0D6B66; --accent-ink:#FFFFFF; --warn:#9A430F; --ok:#0D6B66;
+    --f:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    color-scheme:light dark;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#1E2326; --surface:#272E32; --sunken:#22292D; --line:#3A454B; --ink:#E4EAEC; --muted:#9AA9AF;
+      --accent:#5BC4B9; --accent-ink:#06201E; --warn:#F0A36D; --ok:#5BC4B9; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 var(--f);-webkit-text-size-adjust:100%}
+  main{max-width:520px;margin:0 auto;padding:max(20px,env(safe-area-inset-top)) 16px max(28px,env(safe-area-inset-bottom));display:grid;gap:16px}
+  .brand{display:flex;align-items:center;gap:8px;margin:0;color:var(--muted);font-size:14px;font-weight:600}
+  .brand img{width:22px;height:22px;border-radius:5px}
+  h1{margin:0;font-size:28px;line-height:1.15;letter-spacing:-.01em}
+  p{margin:0}
+  .lead{color:var(--muted)}
+  .sr{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+  .btn{display:block;width:100%;font:600 18px var(--f);text-align:center;border-radius:12px;padding:16px;border:1px solid transparent;cursor:pointer}
+  .btn.primary{background:var(--accent);color:var(--accent-ink)}
+  .btn.ghost{background:var(--surface);border-color:var(--line);color:var(--ink);font-size:15px;padding:10px 14px;width:auto;display:inline-block}
+  .btn[aria-disabled="true"]{opacity:.5}
+  .status{min-height:1.45em;font-weight:600}
+  .status.ok{color:var(--ok)}
+  .status.warn{color:var(--warn)}
+  details{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  summary{font-weight:600;cursor:pointer}
+  details[open] summary{margin-bottom:10px}
+  ol{margin:0;padding-left:22px;display:grid;gap:10px}
+  .addr{display:grid;gap:8px;margin-top:6px}
+  .addr input{width:100%;font:13px ui-monospace,Menlo,monospace;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--sunken);color:var(--ink)}
+  .hint{color:var(--muted);font-size:14px}
+  .small{font-size:13px}
+  b{font-weight:600}
+</style>
+</head>
+<body>
+<main>
+  <p class="brand"><img src="assets/icon-64.png" alt=""> Label Sheet Keeper</p>
+  <h1>Send a label</h1>
+
+  <section id="ready" hidden>
+    <div style="display:grid;gap:12px">
+      <p class="lead">Choose a return label: a PDF or a screenshot. It shows up in the Word panel, ready to print.</p>
+      <input type="file" id="pick" class="sr" multiple accept="application/pdf,image/*">
+      <label for="pick" id="pick-btn" class="btn primary">Choose a label</label>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <details id="shortcut" hidden>
+    <summary>Send from the Share button</summary>
+    <ol>
+      <li>Copy your sending address.
+        <div class="addr">
+          <input id="addr" type="text" readonly aria-label="Your sending address">
+          <button type="button" id="copy" class="btn ghost">Copy</button>
+        </div>
+      </li>
+      <li>Open the <b>Shortcuts</b> app, tap <b>+</b>, and name the shortcut <b>Send to Label Sheet Keeper</b>.</li>
+      <li>Tap the <b>Details</b> button (ⓘ), turn on <b>Show in Share Sheet</b>, and tap <b>Done</b>.</li>
+      <li>Add the action <b>Get Contents of URL</b> and paste the address as its URL.</li>
+      <li>Tap <b>Show More</b>. Set <b>Method</b> to <b>POST</b> and <b>Request Body</b> to <b>File</b>, then choose <b>Shortcut Input</b> as the file.</li>
+      <li>Add the action <b>Show Notification</b> and set its text to <b>Contents of URL</b>.</li>
+    </ol>
+    <p class="hint" style="margin-top:10px">Then, on a label in Mail, Files or Photos, tap Share › <b>Send to Label Sheet Keeper</b>.</p>
+  </details>
+
+  <details id="home" hidden>
+    <summary>Keep this page on your Home Screen</summary>
+    <p>In Safari, tap Share, then <b>Add to Home Screen</b>.</p>
+  </details>
+
+  <p id="privacy" class="hint small" hidden>Labels wait on the Label Sheet Keeper server until the panel picks them up, for 7 days at most. Keep your sending address to yourself.</p>
+
+  <section id="nolink" hidden>
+    <p>Open this page by scanning the QR code in the Word panel: <b>Settings › Your phone › Link your phone</b>.</p>
+  </section>
+</main>
+<script>
+(function () {
+  'use strict';
+  var API = 'https://api.labelsheetkeeper.workers.dev';
+  var KEY = 'lsk.phoneBox';
+  var BOX_RE = /^[A-Za-z0-9_-]{22}$/;
+  function $(id) { return document.getElementById(id); }
+  function remember(v) {
+    try { if (v === undefined) return localStorage.getItem(KEY); localStorage.setItem(KEY, v); } catch (e) { /* private browsing */ }
+    return null;
+  }
+
+  // The mailbox comes in the link from the panel's QR code (after #), and is
+  // remembered so the page keeps working from the Home Screen.
+  var hash = (location.hash || '').replace(/^#/, '');
+  var box = BOX_RE.test(hash) ? hash : '';
+  if (box) remember(box);
+  else if (BOX_RE.test(remember() || '')) box = remember();
+  if (box && hash !== box) { try { history.replaceState(null, '', '#' + box); } catch (e) { /* ignore */ } }
+
+  ['ready', 'shortcut', 'home', 'privacy'].forEach(function (id) { $(id).hidden = !box; });
+  $('nolink').hidden = !!box;
+  if (!box) return;
+
+  var send = API + '/drop/' + box;
+  $('addr').value = send + '?reply=text';
+  $('copy').addEventListener('click', function () {
+    var done = function () { $('copy').textContent = 'Copied'; setTimeout(function () { $('copy').textContent = 'Copy'; }, 2000); };
+    var fallback = function () { $('addr').select(); try { document.execCommand('copy'); done(); } catch (e) { /* select is enough */ } };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText($('addr').value).then(done, fallback);
+    else fallback();
+  });
+
+  function status(text, tone) { var s = $('status'); s.textContent = text; s.className = 'status' + (tone ? ' ' + tone : ''); }
+
+  var busy = false;
+  $('pick').addEventListener('change', function () {
+    var files = Array.prototype.slice.call($('pick').files || []);
+    $('pick').value = '';
+    if (!files.length || busy) return;
+    busy = true; $('pick-btn').setAttribute('aria-disabled', 'true');
+    var i = 0, sent = 0, problems = [];
+    var pause = function () { return new Promise(function (r) { setTimeout(r, i < files.length ? 1200 : 0); }); };
+    var next = function () {
+      if (i >= files.length) return finish();
+      var f = files[i++];
+      status(files.length > 1 ? 'Sending ' + i + ' of ' + files.length + '…' : 'Sending…');
+      return fetch(send, { method: 'POST', body: f, headers: { 'X-File-Name': encodeURIComponent(f.name || '') } })
+        .then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (b) {
+            if (r.ok) sent++; else problems.push(b.error || 'That file couldn’t be sent.');
+          });
+        }, function () { problems.push('No connection. Check your internet and try again.'); })
+        .then(pause)
+        .then(next);
+    };
+    var finish = function () {
+      busy = false; $('pick-btn').removeAttribute('aria-disabled');
+      if (!problems.length) status(sent === 1 ? 'Sent. It’s waiting in the Word panel.' : 'Sent ' + sent + ' labels. They’re waiting in the Word panel.', 'ok');
+      else status((sent ? 'Sent ' + sent + ' of ' + files.length + '. ' : '') + problems[0], 'warn');
+    };
+    next();
+  });
+})();
+</script>
+</body>
+</html>

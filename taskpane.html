@@ -132,6 +132,10 @@
     <section class="step" aria-labelledby="s2">
       <h2 id="s2"><span class="n">2</span><span id="s2-title">Fill labels</span></h2>
       <p id="ship-target" class="hint" hidden></p>
+      <div id="phone-in" class="note" hidden>
+        <p id="phone-in-msg"></p>
+        <div class="row"><button type="button" id="phone-in-use" class="btn primary sm">Use it</button></div>
+      </div>
       <div id="side-row" class="side-row" hidden>
         <p id="side-q" class="hint"></p>
         <div class="seg" role="group" aria-labelledby="side-q">
@@ -416,6 +420,19 @@
             <label for="scan-file" id="scan-label2" class="btn ghost sm" tabindex="0">Use a scan</label>
             <button type="button" id="nudge-apply" class="btn ghost sm" hidden>Apply to this sheet</button>
           </div>
+        </div>
+        <div id="phone" class="nudge">
+          <span class="fl">Your phone <button type="button" class="info" aria-label="About sending labels from your phone" data-tip="Send a return label from your phone and it shows up here, ready to print. Labels wait on the Label Sheet Keeper server until this panel picks them up, for 7 days at most.">i</button></span>
+          <div id="phone-qr-box" class="phone-qr" hidden>
+            <canvas id="phone-qr" width="180" height="180" role="img" aria-label="QR code that opens the sending page on your phone"></canvas>
+            <p class="hint">Scan with your phone’s camera and open the link.</p>
+          </div>
+          <div class="row">
+            <button type="button" id="phone-link" class="btn ghost sm">Link your phone</button>
+            <button type="button" id="phone-show" class="btn ghost sm" hidden>Show the QR code</button>
+            <button type="button" id="phone-unlink" class="btn link sm" hidden>Unlink</button>
+          </div>
+          <p id="phone-status" class="hint" role="status"></p>
         </div>
         <div id="backup-sheet-slot" class="nudge"></div>
         <div class="nudge">

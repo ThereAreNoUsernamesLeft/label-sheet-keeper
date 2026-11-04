@@ -236,3 +236,5 @@ ol.book-list li span::before{counter-increment:wait;content:counter(wait) ". ";c
 .group-row select{width:auto;flex:1;min-width:0}
 .group-row .btn{flex:none}
 .tally .saved{color:var(--muted)}
+.phone-qr{display:grid;justify-items:start;gap:6px}
+.phone-qr canvas{display:block;border:1px solid var(--line);border-radius:6px;background:#fff}

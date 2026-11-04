@@ -15,6 +15,7 @@ python3 tests/e2e/run.py           # sheets, printing, addresses, table window, 
 python3 tests/e2e/run15.py         # stock, fill other sheets first, numbers and codes, scans, backups
 python3 tests/e2e/run16.py         # sheet list clean-up, editing addresses, undoing older prints
 python3 tests/e2e/run17.py         # alignment squares, recent addresses, groups, labels saved
+python3 tests/e2e/run18.py         # linking a phone, labels sent from it, the phone page
 npx eslint -c tests/eslint.config.cjs taskpane.js table.js lsk-tools.js sheetdoc.js
 ```
 

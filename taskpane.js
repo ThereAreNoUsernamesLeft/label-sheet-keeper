@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.7.1';
+  var VERSION = '1.8';
   var ADDIN_ID = '8d491c85-a76d-4d26-a6f5-b7b2dd4a1711';   // must match manifest.xml <Id>
   var F = window.LSK_FORMATS;
   var S = window.LSK_SHEET;
@@ -35,8 +35,10 @@
     custom: 'lsk.customFormats', sheets: 'lsk.sheets', tableInfo: 'lsk.tableInfo', tableDraft: 'lsk.tableDraft',
     home: 'lsk.homeCountry', geoKey: 'lsk.geoKey', suggest: 'lsk.suggest',
     stock: 'lsk.stock.', fillJob: 'lsk.fillJob', testNudge: 'lsk.testNudge.', codes: 'lsk.codes',
-    recent: 'lsk.recent', saved: 'lsk.savedLabels', showSaved: 'lsk.showSaved'
+    recent: 'lsk.recent', saved: 'lsk.savedLabels', showSaved: 'lsk.showSaved', phone: 'lsk.phone'
   };
+  // The Label Sheet Keeper server (a Cloudflare Worker, see worker/).
+  var API = 'https://api.labelsheetkeeper.workers.dev';
   var USED_TAG = 'lsk-used';
 
   // A missing element (for example while Word still shows an older copy of
@@ -1778,7 +1780,7 @@
   // A backup is a Word document holding this Mac's settings (address book,
   // return address, sizes, adjustments, stock, logo...). Things that only make
   // sense on this Mac, or for a moment, stay out.
-  var BACKUP_SKIP = /^lsk\.(tableInfo|tableDraft|addinRef|fillJob|sheets|testCheck\.|testNudge\.|last\.)/;
+  var BACKUP_SKIP = /^lsk\.(tableInfo|tableDraft|addinRef|fillJob|sheets|testCheck\.|testNudge\.|last\.|phone$)/;
   function backupKeys(withKey) {
     var out = {};
     try {
@@ -1935,6 +1937,8 @@
     renderStock();
     renderSettings();
     renderAbout();
+    renderPhone();
+    renderPhoneIn();
   }
 
   function thumb(f, width) {
@@ -2414,6 +2418,147 @@
     rows.forEach(function (r) { dl.appendChild(el('dt', '', r[0])); dl.appendChild(el('dd', '', r[1])); });
   }
 
+  // ---------- labels sent from a phone ----------
+  // Linking gives this Mac a mailbox on the server and a read key ({box, key}).
+  // The phone only gets the mailbox (in the QR code), so it can send labels
+  // but not read them. The panel checks for labels while it's open.
+  var phone = { items: [], qr: false, problem: '', checking: false, using: false };
+  function phoneLink() { var l = storeJson(LS.phone); return l && l.box && l.key ? l : null; }
+  function phonePageUrl(box) { return new URL('phone.html', location.href).href.split('#')[0] + '#' + box; }
+  function phoneFetch(path, opts) {
+    opts = opts || {};
+    var link = phoneLink(), headers = {};
+    if (link) headers.Authorization = 'Bearer ' + link.key;
+    return fetch(API + path, { method: opts.method || 'GET', headers: headers, cache: 'no-store' }).then(function (r) {
+      if (r.ok) return opts.raw ? r : r.json();
+      var e = new Error('HTTP ' + r.status); e.status = r.status; throw e;
+    });
+  }
+  function checkPhone() {
+    var link = phoneLink();
+    if (!link || phone.checking || phone.using || document.visibilityState === 'hidden') return Promise.resolve();
+    phone.checking = true;
+    return phoneFetch('/box/' + link.box).then(function (b) {
+      phone.items = (b && b.items) || [];
+      phone.problem = '';
+    }, function (e) {
+      if (e && e.status === 401) { storeJson(LS.phone, null); phone.items = []; phone.qr = false; phone.problem = 'Your phone was unlinked. Link it again to send labels.'; }
+      else phone.problem = 'Couldn’t reach the server. Trying again shortly.';
+    }).then(function () { phone.checking = false; renderPhone(); renderPhoneIn(); });
+  }
+  function startPhoneWatch() {
+    checkPhone();
+    setInterval(checkPhone, 20000);
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') checkPhone(); });
+    window.addEventListener('focus', function () { checkPhone(); });
+  }
+  function renderPhone() {
+    var link = phoneLink();
+    $('phone-link').hidden = !!link;
+    $('phone-show').hidden = !link;
+    $('phone-show').textContent = phone.qr ? 'Hide the QR code' : 'Show the QR code';
+    $('phone-unlink').hidden = !link;
+    $('phone-qr-box').hidden = !link || !phone.qr;
+    $('phone-status').textContent = phone.problem || (link ? 'Linked. Labels you send show up on shipping-label sheets.' : '');
+  }
+  function renderPhoneIn() {
+    var k = phone.items.length, box = $('phone-in');
+    box.hidden = !k || st.kind !== 'sheet' || !st.fmt;
+    if (box.hidden) return;
+    var isShip = !!st.fmt.shipping, them = k === 1 ? 'it' : 'them';
+    $('phone-in-msg').textContent = isShip ? plural(k, 'label') + ' from your phone.'
+      : plural(k, 'label') + ' from your phone ' + (k === 1 ? 'is' : 'are') + ' waiting. Open a shipping-label sheet to use ' + them + '.';
+    $('phone-in-use').hidden = !isShip;
+    $('phone-in-use').textContent = 'Use ' + them;
+    $('phone-in-use').disabled = phone.using;
+  }
+  function drawPhoneQr() {
+    var link = phoneLink();
+    if (!link) return Promise.resolve();
+    return loadQrLib().then(function () {
+      var url = phonePageUrl(link.box), m = T.qrMatrix(url), n = m.length, quiet = 4, scale = 5;
+      var size = (n + 2 * quiet) * scale, dpr = window.devicePixelRatio || 1, c = $('phone-qr');
+      c.width = Math.round(size * dpr); c.height = c.width;
+      c.style.width = size + 'px'; c.style.height = size + 'px';
+      c.setAttribute('data-url', url);
+      var x = c.getContext('2d');
+      x.setTransform(dpr, 0, 0, dpr, 0, 0);
+      x.fillStyle = '#fff'; x.fillRect(0, 0, size, size);
+      x.fillStyle = '#000';
+      for (var r = 0; r < n; r++) for (var col = 0; col < n; col++) if (m[r][col]) x.fillRect((col + quiet) * scale, (r + quiet) * scale, scale, scale);
+    });
+  }
+  function linkPhone() {
+    $('phone-link').disabled = true;
+    fetch(API + '/pair', { method: 'POST', cache: 'no-store' }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (b) {
+      if (!b || !b.box || !b.key) throw new Error('No mailbox in the answer');
+      storeJson(LS.phone, { box: b.box, key: b.key, at: Date.now() });
+      phone.items = []; phone.problem = ''; phone.qr = true;
+      renderPhone();
+      return drawPhoneQr().then(function () { say('Scan the QR code with your phone’s camera.'); });
+    }).catch(function (e) {
+      say(e && e.userMessage ? e.userMessage : 'Couldn’t reach the Label Sheet Keeper server. Check your internet connection and try again.', 'warn');
+    }).then(function () { $('phone-link').disabled = false; });
+  }
+  function unlinkPhone() {
+    ask('Unlink your phone? Its sending address stops working, and labels not picked up yet are deleted.', 'Unlink', function () {
+      var link = phoneLink();
+      var done = function () { storeJson(LS.phone, null); phone.items = []; phone.qr = false; phone.problem = ''; renderPhone(); renderPhoneIn(); say('Your phone is unlinked.'); };
+      if (!link) { done(); return; }
+      phoneFetch('/box/' + link.box, { method: 'DELETE' }).then(done, function (e) {
+        if (e && e.status === 401) { done(); return; }
+        say('Couldn’t reach the server, so your phone is still linked. Try again when you’re online.', 'warn');
+      });
+    }, true);
+  }
+  // Fetch the waiting labels, delete them from the server, and open them like
+  // chosen files: one goes to the crop view, several to the waiting list.
+  function usePhoneLabels() {
+    var link = phoneLink(), items = phone.items.slice();
+    if (!link || !items.length || phone.using || !st.fmt || !st.fmt.shipping) return;
+    phone.using = true; renderPhoneIn();
+    say('Getting ' + plural(items.length, 'label') + ' from your phone…');
+    var files = [], taken = {}, failed = false;
+    items.reduce(function (p, it) {
+      return p.then(function () {
+        if (failed) return null;
+        return phoneFetch('/box/' + link.box + '/' + it.id, { raw: true }).then(function (r) { return r.blob(); }).then(function (blob) {
+          files.push(new File([blob], it.name || 'Label from your phone', { type: it.type || blob.type }));
+          taken[it.id] = true;
+          return phoneFetch('/box/' + link.box + '/' + it.id, { method: 'DELETE' }).catch(function () { /* it expires on its own */ });
+        }, function (e) {
+          if (!e || e.status !== 404) { failed = true; return null; }
+          // Expired on the server: take it off the server's list too.
+          taken[it.id] = true;
+          return phoneFetch('/box/' + link.box + '/' + it.id, { method: 'DELETE' }).catch(function () { /* next check */ });
+        });
+      });
+    }, Promise.resolve()).then(function () {
+      phone.items = phone.items.filter(function (it) { return !taken[it.id]; });
+      phone.using = false;
+      renderPhoneIn();
+      if (!files.length) {
+        say(failed ? 'Couldn’t get the labels from your phone. Check your internet connection and try again.' : 'That label is no longer waiting. Send it again from your phone.', 'warn');
+        return;
+      }
+      setFillTab('file');
+      handleFiles(files);
+    });
+  }
+  function wirePhone() {
+    $('phone-link').addEventListener('click', linkPhone);
+    $('phone-show').addEventListener('click', function () {
+      phone.qr = !phone.qr;
+      renderPhone();
+      if (phone.qr) drawPhoneQr().catch(function (e) { say(e && e.userMessage ? e.userMessage : 'The QR code couldn’t be drawn.', 'warn'); });
+    });
+    $('phone-unlink').addEventListener('click', unlinkPhone);
+    $('phone-in-use').addEventListener('click', usePhoneLabels);
+  }
+
   // ---------- add your own size ----------
   function sizeFromForm() {
     var num = function (id) { return Number($(id).value); };
@@ -2567,6 +2712,7 @@
     // Step 2: shipping label files, address, table
     wireShip();
     wireAddress();
+    wirePhone();
     $('table-open').addEventListener('click', openTableWindow);
     $('reprint-btn').addEventListener('click', function () {
       queueChange(reprintLast).then(function (n) { return refresh().then(function () { say('Put the last label on ' + theName(n) + ' again.'); }); });
@@ -3053,11 +3199,12 @@
       wireTips();
       refresh();
       startPrintWatch();
+      startPhoneWatch();
       // Learn how Word attaches this add-in, so new sheets can open with the panel.
       findAddinRef().then(function () { if (st.kind === 'sheet') renderAbout(); });
       try { Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, onSelectionChanged); } catch (e) { /* older Word */ }
       window.addEventListener('pagehide', forgetIfUnsaved);
-      window.LSK_TEST = { st: function () { return st; }, ship: ship, output: output, handleFile: handleFile, fillFromRows: fillFromRows, checkPrinted: checkPrinted, checkFillJob: checkFillJob, scan: function () { return scanResult; } };
+      window.LSK_TEST = { st: function () { return st; }, ship: ship, output: output, handleFile: handleFile, fillFromRows: fillFromRows, checkPrinted: checkPrinted, checkFillJob: checkFillJob, scan: function () { return scanResult; }, checkPhone: checkPhone, phone: phone, backupKeys: backupKeys };
     });
   }
   start();
