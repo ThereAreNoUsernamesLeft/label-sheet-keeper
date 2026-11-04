@@ -35,7 +35,7 @@
     custom: 'lsk.customFormats', sheets: 'lsk.sheets', tableInfo: 'lsk.tableInfo', tableDraft: 'lsk.tableDraft',
     home: 'lsk.homeCountry', geoKey: 'lsk.geoKey', suggest: 'lsk.suggest',
     stock: 'lsk.stock.', fillJob: 'lsk.fillJob', testNudge: 'lsk.testNudge.', codes: 'lsk.codes',
-    recent: 'lsk.recent', saved: 'lsk.savedLabels', showSaved: 'lsk.showSaved'
+    recent: 'lsk.recent', saved: 'lsk.savedLabelsX', showSaved: 'lsk.showSaved'
   };
   var USED_TAG = 'lsk-used';
 
