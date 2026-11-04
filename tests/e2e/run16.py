@@ -228,3 +228,7 @@ finally:
 fails = [r for r in results if not r[0]]
 print('\n%d checks, %d failed' % (len(results), len(fails)))
 for f in fails: print('  FAILED:', f[1], '--', f[2])
+if os.environ.get('GITHUB_ACTIONS'):
+    esc = lambda s: str(s).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+    for f in fails: print('::error title=%s::%s' % (os.path.basename(__file__), esc(f[1])))
+sys.exit(1 if fails else 0)

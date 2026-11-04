@@ -2,7 +2,9 @@
 
 These run the panel in a headless browser against a stand-in for Word (`mock-office.js`), so they need no Word and no Mac.
 
-Requirements: Python 3 with Playwright (`pip install playwright` then `playwright install chromium`), Node.js, and ESLint 9 for the lint step.
+GitHub runs all of them on every push (`.github/workflows/test-and-deploy.yml`). The live panel is only updated from `main`, and only when every check passes.
+
+Requirements: Python 3 with Playwright (`pip install playwright` then `playwright install chromium`), Node.js, and ESLint 9 or later for the lint step.
 
 From the repository folder:
 
@@ -15,4 +17,4 @@ python3 tests/e2e/run17.py         # alignment squares, recent addresses, groups
 npx eslint -c tests/eslint.config.cjs taskpane.js table.js lsk-tools.js sheetdoc.js
 ```
 
-Each script ends with "N checks, 0 failed". Screenshots and files they make go in `tests/out/`, which isn't committed. Each script serves the repository on its own local port (8790, 8791, 8795, 8796).
+Each script ends with "N checks, 0 failed" and exits with an error if any check failed. Screenshots and files they make go in `tests/out/`, which isn't committed. Each script serves the repository on its own local port (8790, 8791, 8795, 8796).

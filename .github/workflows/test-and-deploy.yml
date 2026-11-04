@@ -1,0 +1,85 @@
+# Runs every check on each push. The live panel (GitHub Pages) is only
+# updated from main, and only after every check has passed.
+name: Test and deploy
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Install the test browser
+        run: |
+          pip install playwright==1.63.0
+          python -m playwright install --with-deps chromium
+
+      # Later steps run even if an earlier one fails, so one run shows every failure.
+      - name: Address, CSV, barcode and scan-measuring helpers
+        run: node tests/tools-test.js
+
+      - name: Sheets, printing, addresses, table window, shipping labels
+        if: ${{ !cancelled() }}
+        run: python tests/e2e/run.py
+
+      - name: Stock, fill other sheets first, numbers and codes, scans, backups
+        if: ${{ !cancelled() }}
+        run: python tests/e2e/run15.py
+
+      - name: Sheet list clean-up, editing addresses, undoing older prints
+        if: ${{ !cancelled() }}
+        run: python tests/e2e/run16.py
+
+      - name: Alignment squares, recent addresses, groups, labels saved
+        if: ${{ !cancelled() }}
+        run: python tests/e2e/run17.py
+
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: npx --yes eslint@10.1.0 -c tests/eslint.config.cjs taskpane.js table.js lsk-tools.js sheetdoc.js
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Gather the panel files (everything except tests and repository files)
+        run: |
+          mkdir _site
+          git archive HEAD -- . ':(exclude)tests' ':(exclude).github' | tar -x -C _site
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v5
