@@ -152,7 +152,10 @@ jobs:
           [ "${#box}" -eq 22 ] || fail "No mailbox in the answer"
           echo "::add-mask::$key"
           sent=$(curl -sS -X POST --data-binary @"$PDF" -H 'X-File-Name: check.pdf' "$WORKER_URL/drop/$box?reply=text")
-          [ "$sent" = "Sent to Label Sheet Keeper." ] || fail "Sending answered: $sent"
+          if [ "$sent" != "Sent to Label Sheet Keeper." ]; then
+            probe=$(curl -sS -w ' [%{http_code}]' "$WORKER_URL/drop/$box")
+            fail "Sending to /drop/$box answered: $sent. A GET there answers: $probe. Linking answered: $(echo "$pair" | jq -c '{box, send}')"
+          fi
           list=$(curl -fsS -H "Authorization: Bearer $key" "$WORKER_URL/box/$box") || fail "Listing failed"
           [ "$(echo "$list" | jq -r '.items[0].name')" = "check.pdf" ] || fail "The label wasn't listed: $list"
           id=$(echo "$list" | jq -r '.items[0].id')
