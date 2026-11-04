@@ -151,12 +151,22 @@ jobs:
           box=$(echo "$pair" | jq -r .box); key=$(echo "$pair" | jq -r .key)
           [ "${#box}" -eq 22 ] || fail "No mailbox in the answer"
           echo "::add-mask::$key"
-          sent=$(curl -sS -X POST --data-binary @"$PDF" -H 'X-File-Name: check.pdf' "$WORKER_URL/drop/$box?reply=text")
+          # Right after a deploy, some of Cloudflare's machines still run the old
+          # version for a few seconds, so a miss is tried again.
+          for try in 1 2 3 4; do
+            sent=$(curl -sS -X POST --data-binary @"$PDF" -H 'X-File-Name: check.pdf' "$WORKER_URL/drop/$box?reply=text")
+            [ "$sent" = "Sent to Label Sheet Keeper." ] && break
+            sleep 10
+          done
           if [ "$sent" != "Sent to Label Sheet Keeper." ]; then
             probe=$(curl -sS -w ' [%{http_code}]' "$WORKER_URL/drop/$box")
             fail "Sending to /drop/$box answered: $sent. A GET there answers: $probe. Linking answered: $(echo "$pair" | jq -c '{box, send}')"
           fi
-          list=$(curl -fsS -H "Authorization: Bearer $key" "$WORKER_URL/box/$box") || fail "Listing failed"
+          for try in 1 2 3; do
+            list=$(curl -fsS -H "Authorization: Bearer $key" "$WORKER_URL/box/$box") || fail "Listing failed"
+            [ "$(echo "$list" | jq -r '.items[0].name')" = "check.pdf" ] && break
+            sleep 5
+          done
           [ "$(echo "$list" | jq -r '.items[0].name')" = "check.pdf" ] || fail "The label wasn't listed: $list"
           id=$(echo "$list" | jq -r '.items[0].id')
           curl -fsS -H "Authorization: Bearer $key" "$WORKER_URL/box/$box/$id" -o got.pdf || fail "Fetching the label failed"
