@@ -21,7 +21,7 @@ A side panel for Microsoft Word that keeps track of which labels on a sheet are 
 
 Use the laser version of a label on a laser printer. You can add your own sizes in the panel (**Add your own size** when making a sheet) or in `formats.js`.
 
-Panel address: https://therearenousernamesleft.github.io/label-sheet-keeper/taskpane.html
+Panel address: https://labelsheetkeeper.github.io/label-sheet-keeper/taskpane.html
 
 ## One-time setup on a Mac
 
@@ -85,7 +85,7 @@ Suggestions come from [Photon by Komoot](https://photon.komoot.io/), a free serv
 
 1. Sign up for a free account at [geoapify.com](https://www.geoapify.com/). No credit card is needed; the free plan includes 3,000 lookups a day.
 2. Create a project and copy its API key.
-3. In the key's settings, add `https://therearenousernamesleft.github.io` as an allowed origin (or HTTP referrer), so the key only works from this add-in.
+3. In the key's settings, add `https://labelsheetkeeper.github.io` as an allowed origin (or HTTP referrer), so the key only works from this add-in.
 4. In Word, open the panel, then **Settings › Address suggestions**. Paste the key and click **Save key**.
 
 The key is kept by the panel on your Mac only, not in this repository or in your Word documents. With a key, suggestions go to Geoapify instead of Photon. On another Mac, paste the key there too.
@@ -138,6 +138,8 @@ If the label layout gets damaged (a row deleted, text typed above the labels, a 
 All of the panel's code lives in this repository. Change a file here, commit, and Word picks up the new version the next time the panel opens (the panel loads its files with a fresh address each time). Changes to `taskpane.html` or `table.html` themselves can take up to 10 minutes to show, because GitHub lets Word keep a copy of those pages for that long.
 
 You only need to touch `manifest.xml` on your Mac again if the add-in's name or web address changes.
+
+In version 1.7.1 the panel moved from `therearenousernamesleft.github.io` to `labelsheetkeeper.github.io`. The panel's saved settings belong to its web address, so after installing the new `manifest.xml`, restore them from a backup made before the move (**Settings › Backup**). Label sheets keep working, since they find the add-in by its ID.
 
 The version Word shows under the add-in's Security Info comes from `manifest.xml`, which is bumped with each release. With the copy installed on your Mac, it changes only when you copy the new `manifest.xml` there. Once the add-in is deployed for others through the Microsoft 365 admin center, uploading the new manifest (**Integrated apps › Update**) updates it for everyone; Microsoft says that can take up to 72 hours to reach every user.
 

@@ -11,16 +11,16 @@
            xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
            xsi:type="TaskPaneApp">
   <Id>8d491c85-a76d-4d26-a6f5-b7b2dd4a1711</Id>
-  <Version>1.7.0.0</Version>
+  <Version>1.7.1.0</Version>
   <ProviderName>Label Sheet Keeper</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Label Sheet Keeper"/>
   <Description DefaultValue="Keeps track of which labels on a sheet are used and fills the open ones."/>
-  <IconUrl DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/assets/icon-32.png"/>
-  <HighResolutionIconUrl DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/assets/icon-64.png"/>
-  <SupportUrl DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/"/>
+  <IconUrl DefaultValue="https://labelsheetkeeper.github.io/label-sheet-keeper/assets/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://labelsheetkeeper.github.io/label-sheet-keeper/assets/icon-64.png"/>
+  <SupportUrl DefaultValue="https://labelsheetkeeper.github.io/label-sheet-keeper/"/>
   <AppDomains>
-    <AppDomain>https://therearenousernamesleft.github.io</AppDomain>
+    <AppDomain>https://labelsheetkeeper.github.io</AppDomain>
   </AppDomains>
   <Hosts>
     <Host Name="Document"/>
@@ -31,7 +31,7 @@
     </Sets>
   </Requirements>
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/taskpane.html"/>
+    <SourceLocation DefaultValue="https://labelsheetkeeper.github.io/label-sheet-keeper/taskpane.html"/>
   </DefaultSettings>
   <Permissions>ReadWriteDocument</Permissions>
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
@@ -77,14 +77,14 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16" DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/assets/icon-16.png"/>
-        <bt:Image id="Icon.32" DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/assets/icon-32.png"/>
-        <bt:Image id="Icon.80" DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/assets/icon-80.png"/>
+        <bt:Image id="Icon.16" DefaultValue="https://labelsheetkeeper.github.io/label-sheet-keeper/assets/icon-16.png"/>
+        <bt:Image id="Icon.32" DefaultValue="https://labelsheetkeeper.github.io/label-sheet-keeper/assets/icon-32.png"/>
+        <bt:Image id="Icon.80" DefaultValue="https://labelsheetkeeper.github.io/label-sheet-keeper/assets/icon-80.png"/>
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="Commands.Url" DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/commands.html"/>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/taskpane.html"/>
-        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://therearenousernamesleft.github.io/label-sheet-keeper/"/>
+        <bt:Url id="Commands.Url" DefaultValue="https://labelsheetkeeper.github.io/label-sheet-keeper/commands.html"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://labelsheetkeeper.github.io/label-sheet-keeper/taskpane.html"/>
+        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://labelsheetkeeper.github.io/label-sheet-keeper/"/>
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="GetStarted.Title" DefaultValue="Label Sheet Keeper is ready"/>
