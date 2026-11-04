@@ -1,0 +1,18 @@
+# Tests
+
+These run the panel in a headless browser against a stand-in for Word (`mock-office.js`), so they need no Word and no Mac.
+
+Requirements: Python 3 with Playwright (`pip install playwright` then `playwright install chromium`), Node.js, and ESLint 9 for the lint step.
+
+From the repository folder:
+
+```
+node tests/tools-test.js           # address, CSV, barcode and scan-measuring helpers
+python3 tests/e2e/run.py           # sheets, printing, addresses, table window, shipping labels
+python3 tests/e2e/run15.py         # stock, fill other sheets first, numbers and codes, scans, backups
+python3 tests/e2e/run16.py         # sheet list clean-up, editing addresses, undoing older prints
+python3 tests/e2e/run17.py         # alignment squares, recent addresses, groups, labels saved
+npx eslint -c tests/eslint.config.cjs taskpane.js table.js lsk-tools.js sheetdoc.js
+```
+
+Each script ends with "N checks, 0 failed". Screenshots and files they make go in `tests/out/`, which isn't committed. Each script serves the repository on its own local port (8790, 8791, 8795, 8796).

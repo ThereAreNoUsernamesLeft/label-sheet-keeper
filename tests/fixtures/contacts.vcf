@@ -1,0 +1,11 @@
+BEGIN:VCARD
+VERSION:3.0
+N:Lee;Ann;;;
+FN:Ann Lee
+item1.ADR;type=HOME:;;5 Pine Rd;Salem;MA;01970;USA
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Bob Ray
+ADR;type=WORK:;Suite 200;77 Main St;Lowell;MA;01852;
+END:VCARD
