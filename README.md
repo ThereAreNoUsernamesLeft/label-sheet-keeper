@@ -130,12 +130,12 @@ If the label layout gets damaged (a row deleted, text typed above the labels, a 
 
 1. Open `formats.js` in this repository on GitHub and click the pencil icon to edit.
 2. Copy one of the entries between `{` and `},`, paste it, and change the values. The comment at the top of the file explains each measurement.
-3. Click **Commit changes**. GitHub publishes the change in a minute or two.
+3. Click **Commit changes**. GitHub runs the checks and, if they all pass, publishes the change in a few minutes.
 4. In Word, open the panel and click **Make another sheet**. The new size is listed. Print a test page before using it on real labels.
 
 ## Updating the panel
 
-All of the panel's code lives in this repository. Change a file here, commit, and Word picks up the new version the next time the panel opens (the panel loads its files with a fresh address each time). Changes to `taskpane.html` or `table.html` themselves can take up to 10 minutes to show, because GitHub lets Word keep a copy of those pages for that long.
+All of the panel's code lives in this repository. Each commit to `main` is checked first (see `tests/README.md`); only when every check passes is it published, and Word picks up the new version the next time the panel opens (the panel loads its files with a fresh address each time). Changes to `taskpane.html` or `table.html` themselves can take up to 10 minutes to show, because GitHub lets Word keep a copy of those pages for that long. If a check fails, the commit gets a red ✗ on GitHub and the live panel stays as it was.
 
 You only need to touch `manifest.xml` on your Mac again if the add-in's name or web address changes.
 
