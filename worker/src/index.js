@@ -13,10 +13,11 @@
 //   DELETE /box/<box>/<id>       picked up                               (read key)
 //   DELETE /box/<box>            unlink: the mailbox and its labels      (read key)
 //
-// Storage is the LABELS KV namespace: "box:<box>" holds the mailbox record,
-// "file:<box>:<id>" each label's bytes.
+// Storage: mailboxes and the list of labels waiting are in the DB database
+// (D1, always up to date). Each label's bytes are in the LABELS KV namespace
+// as "file:<box>:<id>", written once and read once, and expire on their own.
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 
 // Only the panel's own address may call the Worker from a browser.
 const ALLOWED_ORIGINS = ['https://labelsheetkeeper.github.io'];
@@ -25,11 +26,22 @@ const MAX_BYTES = 10 * 1024 * 1024;   // per label
 const MAX_WAITING = 20;               // labels waiting in one mailbox
 const MAX_PER_DAY = 60;               // labels sent to one mailbox per day
 const KEEP_SECONDS = 7 * 24 * 3600;   // a label not picked up is deleted after this
+const ARRIVING_MS = 5 * 60 * 1000;    // a new label's file can take a moment to reach every Cloudflare location
 
 const BOX_RE = /^[A-Za-z0-9_-]{22}$/;
 const ID_RE = /^[A-Za-z0-9_-]{16}$/;
 
 const EXT = { 'application/pdf': 'pdf', 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/heic': 'heic' };
+
+const SCHEMA = [
+  'CREATE TABLE IF NOT EXISTS boxes (box TEXT PRIMARY KEY, key TEXT NOT NULL, created INTEGER NOT NULL, day TEXT NOT NULL DEFAULT \'\', sent INTEGER NOT NULL DEFAULT 0)',
+  'CREATE TABLE IF NOT EXISTS labels (box TEXT NOT NULL, id TEXT NOT NULL, type TEXT NOT NULL, name TEXT NOT NULL, size INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (box, id))'
+];
+let schemaReady = null;
+function ready(env) {
+  if (!schemaReady) schemaReady = env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s))).catch((e) => { schemaReady = null; throw e; });
+  return schemaReady;
+}
 
 // ---------- helpers ----------
 function corsHeaders(origin) {
@@ -93,29 +105,12 @@ function fileName(request, type) {
   return name || 'Label from your phone.' + EXT[type];
 }
 
-const boxKey = (box) => 'box:' + box;
 const fileKey = (box, id) => 'file:' + box + ':' + id;
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// KV takes one write a second to the same key, so a label sent (or picked up)
-// right after another waits its turn.
-async function putBox(env, box, rec) {
-  for (let tries = 1; ; tries++) {
-    try { return await env.LABELS.put(boxKey(box), JSON.stringify(rec)); } catch (e) {
-      if (tries >= 4) throw e;
-      await sleep(1100);
-    }
-  }
-}
+const oldest = () => Date.now() - KEEP_SECONDS * 1000;
 
 async function getBox(env, box) {
   if (!BOX_RE.test(box)) return null;
-  return env.LABELS.get(boxKey(box), 'json');
-}
-
-function current(rec) {
-  const oldest = Date.now() - KEEP_SECONDS * 1000;
-  return (rec.items || []).filter((it) => it.at > oldest);
+  return env.DB.prepare('SELECT box, key, day, sent FROM boxes WHERE box = ?').bind(box).first();
 }
 
 async function withKey(request, env, box) {
@@ -130,7 +125,7 @@ async function withKey(request, env, box) {
 async function pair(request, env, url, origin) {
   if (!ALLOWED_ORIGINS.includes(origin)) return json({ error: 'Link your phone from the Label Sheet Keeper panel.' }, 403, origin);
   const box = randomId(16), key = randomId(24);
-  await putBox(env, box, { key: await sha256(key), items: [], created: Date.now(), day: '', sent: 0 });
+  await env.DB.prepare('INSERT INTO boxes (box, key, created) VALUES (?, ?, ?)').bind(box, await sha256(key), Date.now()).run();
   return json({ box, key, send: url.origin + '/drop/' + box }, 201, origin);
 }
 
@@ -144,46 +139,58 @@ async function drop(request, env, box, origin, asText) {
   const type = sniff(new Uint8Array(buf, 0, Math.min(buf.byteLength, 1024)));
   if (!type) return message('Send a PDF or a picture (PNG, JPEG or HEIC).', 415, origin, asText);
 
-  rec.items = current(rec);
-  if (rec.items.length >= MAX_WAITING) return message('Too many labels are waiting. Open the panel to pick them up first.', 429, origin, asText);
+  const waiting = await env.DB.prepare('SELECT COUNT(*) AS n FROM labels WHERE box = ? AND at > ?').bind(box, oldest()).first();
+  if (waiting && waiting.n >= MAX_WAITING) return message('Too many labels are waiting. Open the panel to pick them up first.', 429, origin, asText);
   const today = new Date().toISOString().slice(0, 10);
-  if (rec.day !== today) { rec.day = today; rec.sent = 0; }
-  if (rec.sent >= MAX_PER_DAY) return message('That’s the most labels for one day. Try again tomorrow.', 429, origin, asText);
+  const sent = rec.day === today ? rec.sent : 0;
+  if (sent >= MAX_PER_DAY) return message('That’s the most labels for one day. Try again tomorrow.', 429, origin, asText);
 
   const id = randomId(12), name = fileName(request, type);
   await env.LABELS.put(fileKey(box, id), buf, { expirationTtl: KEEP_SECONDS, metadata: { type, name } });
-  rec.items.push({ id, type, name, size: buf.byteLength, at: Date.now() });
-  rec.sent++;
-  await putBox(env, box, rec);
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO labels (box, id, type, name, size, at) VALUES (?, ?, ?, ?, ?, ?)').bind(box, id, type, name, buf.byteLength, Date.now()),
+    env.DB.prepare('UPDATE boxes SET day = ?, sent = ? WHERE box = ?').bind(today, sent + 1, box)
+  ]);
   return message('Sent to Label Sheet Keeper.', 201, origin, asText);
 }
 
 async function boxRoute(request, env, box, id, origin) {
   const rec = await withKey(request, env, box);
   if (!rec) return json({ error: 'not linked' }, 401, origin);
-  const items = current(rec);
 
   if (!id && request.method === 'GET') {
-    return json({ items: items.map(({ id, type, name, size, at }) => ({ id, type, name, size, at })) }, 200, origin);
+    await env.DB.prepare('DELETE FROM labels WHERE box = ? AND at <= ?').bind(box, oldest()).run();
+    const { results } = await env.DB.prepare('SELECT id, type, name, size, at FROM labels WHERE box = ? ORDER BY at, id').bind(box).all();
+    return json({ items: results || [] }, 200, origin);
   }
   if (!id && request.method === 'DELETE') {
-    await Promise.all((rec.items || []).map((it) => env.LABELS.delete(fileKey(box, it.id))));
-    await env.LABELS.delete(boxKey(box));
+    const { results } = await env.DB.prepare('SELECT id FROM labels WHERE box = ?').bind(box).all();
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM labels WHERE box = ?').bind(box),
+      env.DB.prepare('DELETE FROM boxes WHERE box = ?').bind(box)
+    ]);
+    await Promise.all((results || []).map((it) => env.LABELS.delete(fileKey(box, it.id))));
     return json({ ok: true }, 200, origin);
   }
   if (!id || !ID_RE.test(id)) return json({ error: 'not found' }, 404, origin);
 
   if (request.method === 'GET') {
+    const row = await env.DB.prepare('SELECT type, at FROM labels WHERE box = ? AND id = ? AND at > ?').bind(box, id, oldest()).first();
+    if (!row) return json({ error: 'This label is no longer waiting.' }, 404, origin);
     const got = await env.LABELS.getWithMetadata(fileKey(box, id), 'arrayBuffer');
-    if (!got || !got.value) return json({ error: 'This label is no longer waiting.' }, 404, origin);
-    const type = (got.metadata && got.metadata.type) || 'application/octet-stream';
-    return new Response(got.value, { status: 200, headers: { 'Content-Type': type, 'Cache-Control': 'no-store', ...corsHeaders(origin) } });
+    if (!got || !got.value) {
+      // Just sent from far away: its file may not have reached this location yet.
+      if (row.at > Date.now() - ARRIVING_MS) return json({ error: 'This label is still on its way. Try again in a moment.' }, 409, origin);
+      await env.DB.prepare('DELETE FROM labels WHERE box = ? AND id = ?').bind(box, id).run();
+      return json({ error: 'This label is no longer waiting.' }, 404, origin);
+    }
+    return new Response(got.value, { status: 200, headers: { 'Content-Type': row.type, 'Cache-Control': 'no-store', ...corsHeaders(origin) } });
   }
   if (request.method === 'DELETE') {
+    await env.DB.prepare('DELETE FROM labels WHERE box = ? AND id = ?').bind(box, id).run();
     await env.LABELS.delete(fileKey(box, id));
-    rec.items = items.filter((it) => it.id !== id);
-    await putBox(env, box, rec);
-    return json({ ok: true, waiting: rec.items.length }, 200, origin);
+    const left = await env.DB.prepare('SELECT COUNT(*) AS n FROM labels WHERE box = ? AND at > ?').bind(box, oldest()).first();
+    return json({ ok: true, waiting: left ? left.n : 0 }, 200, origin);
   }
   return json({ error: 'method not allowed' }, 405, origin);
 }
@@ -201,6 +208,7 @@ export default {
         if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405, origin);
         return json({ ok: true, service: 'label-sheet-keeper', version: VERSION }, 200, origin);
       }
+      await ready(env);
       if (parts[0] === 'pair' && parts.length === 1) {
         if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405, origin);
         return await pair(request, env, url, origin);

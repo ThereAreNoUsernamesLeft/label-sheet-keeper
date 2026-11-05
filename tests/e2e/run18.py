@@ -63,6 +63,7 @@ class FakeWorker:
             it = next((x for x in self.items if x['id'] == parts[2]), None)
             if req.method == 'GET':
                 if not it: return route.fulfill(status=404, headers=CORS, json={'error': 'This label is no longer waiting.'})
+                if it.get('arriving'): return route.fulfill(status=409, headers=CORS, json={'error': 'This label is still on its way. Try again in a moment.'})
                 return route.fulfill(status=200, headers=dict(CORS, **{'Content-Type': it['type']}), body=it['bytes'])
             if req.method == 'DELETE':
                 self.items = [x for x in self.items if x['id'] != parts[2]]
@@ -165,6 +166,19 @@ try:
     check(wait(pg, "document.getElementById('say').textContent.indexOf('no longer waiting') >= 0"), 'a label that’s gone says so', say(pg))
     check(wait(pg, "document.getElementById('phone-in').hidden"), 'and leaves the note')
     check(fw.calls('DELETE', '/box/%s/item%012d' % (fw.box, fw.n)), 'and is taken off the server’s list too')
+
+    # ================= D2: a label just sent, not everywhere yet =================
+    fw.add(PDF, 'application/pdf', 'Fresh.pdf')
+    fw.items[-1]['arriving'] = True
+    pg.evaluate("LSK_TEST.checkPhone()")
+    wait(pg, "!document.getElementById('phone-in').hidden")
+    pg.evaluate("document.getElementById('say').textContent = ''")
+    pg.click('#phone-in-use')
+    check(wait(pg, "document.getElementById('say').textContent.indexOf('still on its way') >= 0"), 'a label still on its way says to try again', say(pg))
+    check(pg.is_visible('#phone-in') and len(fw.items) == 1 and not fw.calls('DELETE', '/box/%s/%s' % (fw.box, fw.items[0]['id'])), 'and stays waiting, not deleted')
+    fw.items[-1]['arriving'] = False
+    pg.click('#phone-in-use')
+    check(wait(pg, "!!LSK_TEST.ship.src && LSK_TEST.ship.name === 'Fresh.pdf'", 15000) and not fw.items, 'once it arrives, Use it works')
 
     # ================= E: unlinking =================
     open_settings(pg)

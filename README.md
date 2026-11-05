@@ -165,5 +165,5 @@ The version Word shows under the add-in's Security Info comes from `manifest.xml
 | `vendor/qrcode-generator/` | qrcode-generator 2.0.4 by Kazuhiko Arase (MIT license), used to make QR codes. "QR Code" is a registered trademark of DENSO WAVE INCORPORATED |
 | `index.html` | This project's web page with the setup steps |
 | `phone.html` | The page a linked phone uses to send labels to the panel |
-| `worker/` | The Label Sheet Keeper server, a Cloudflare Worker at `api.labelsheetkeeper.workers.dev`. GitHub deploys it after every check passes |
+| `worker/` | The Label Sheet Keeper server, a Cloudflare Worker at `api.labelsheetkeeper.workers.dev`. Its D1 database holds the phone mailboxes and the labels waiting in them; the labels' files are in KV. GitHub deploys it after every check passes |
 | `tests/` | Checks GitHub runs before each update goes live (see `tests/README.md`) |

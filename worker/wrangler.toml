@@ -7,7 +7,13 @@ compatibility_date = "2026-09-01"
 workers_dev = true
 preview_urls = false
 
-# Labels sent from phones wait here until the panel picks them up (7 days at most).
-# No id: Wrangler creates the namespace on the first deploy and keeps it linked.
+# No ids below: Wrangler creates each on the first deploy and keeps it linked.
+
+# Mailboxes and the labels waiting in them (always up to date).
+[[d1_databases]]
+binding = "DB"
+database_name = "label-sheet-keeper"
+
+# The labels' files, written once and read once; they expire after 7 days.
 [[kv_namespaces]]
 binding = "LABELS"

@@ -2751,7 +2751,7 @@
     if (!link || !items.length || phone.using || !st.fmt || !st.fmt.shipping) return;
     phone.using = true; renderPhoneIn();
     say('Getting ' + plural(items.length, 'label') + ' from your phone…');
-    var files = [], taken = {}, failed = false;
+    var files = [], taken = {}, failed = false, arriving = false;
     items.reduce(function (p, it) {
       return p.then(function () {
         if (failed) return null;
@@ -2760,6 +2760,7 @@
           taken[it.id] = true;
           return phoneFetch('/box/' + link.box + '/' + it.id, { method: 'DELETE' }).catch(function () { /* it expires on its own */ });
         }, function (e) {
+          if (e && e.status === 409) { arriving = true; return null; }   // just sent; try again soon
           if (!e || e.status !== 404) { failed = true; return null; }
           // Expired on the server: take it off the server's list too.
           taken[it.id] = true;
@@ -2771,7 +2772,9 @@
       phone.using = false;
       renderPhoneIn();
       if (!files.length) {
-        say(failed ? 'Couldn’t get the labels from your phone. Check your internet connection and try again.' : 'That label is no longer waiting. Send it again from your phone.', 'warn');
+        say(failed ? 'Couldn’t get the labels from your phone. Check your internet connection and try again.'
+          : arriving ? 'That label is still on its way. Try again in a moment.'
+            : 'That label is no longer waiting. Send it again from your phone.', 'warn');
         return;
       }
       setFillTab('file');

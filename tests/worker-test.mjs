@@ -1,10 +1,12 @@
-// Checks the Cloudflare Worker (worker/src/index.js) without deploying it,
-// using an in-memory stand-in for its KV storage.
+// Checks the Cloudflare Worker (worker/src/index.js) without deploying it.
+// Its D1 database is stood in for by Node's built-in SQLite (the same SQL
+// runs), and its KV namespace by a Map.
 // Run from the repository folder: node tests/worker-test.mjs
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DatabaseSync } from 'node:sqlite';
 import worker from '../worker/src/index.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -12,27 +14,35 @@ const PANEL = 'https://labelsheetkeeper.github.io';
 let n = 0;
 const ok = (c, m) => { assert(c, m); n++; };
 
-class FakeKV {
-  constructor() { this.m = new Map(); }
-  async get(key, type) {
-    const v = this.m.get(key);
-    if (!v) return null;
-    return type === 'json' ? JSON.parse(v.value) : v.value;
+class Stmt {
+  constructor(db, sql, args) { this.db = db; this.sql = sql; this.args = args || []; }
+  bind(...args) { return new Stmt(this.db, this.sql, args); }
+  runNow() { const r = this.db.prepare(this.sql).run(...this.args); return { success: true, meta: { changes: Number(r.changes) } }; }
+  async run() { return this.runNow(); }
+  async first() { const r = this.db.prepare(this.sql).get(...this.args); return r === undefined ? null : { ...r }; }
+  async all() { return { results: this.db.prepare(this.sql).all(...this.args).map((r) => ({ ...r })) }; }
+}
+class FakeD1 {
+  constructor() { this.db = new DatabaseSync(':memory:'); }
+  prepare(sql) { return new Stmt(this.db, sql); }
+  async batch(stmts) {
+    this.db.exec('BEGIN');
+    try { const out = stmts.map((s) => s.runNow()); this.db.exec('COMMIT'); return out; } catch (e) { this.db.exec('ROLLBACK'); throw e; }
   }
+  rows(sql, ...args) { return this.db.prepare(sql).all(...args).map((r) => ({ ...r })); }
+}
+class FakeKV {
+  constructor() { this.m = new Map(); this.hidden = new Set(); }
   async getWithMetadata(key) {
-    const v = this.m.get(key);
+    const v = this.hidden.has(key) ? null : this.m.get(key);
     return v ? { value: v.value, metadata: v.metadata || null } : { value: null, metadata: null };
   }
-  async put(key, value, opts = {}) {
-    // Like KV's one-write-a-second limit on a key: fail the next N writes to box records.
-    if (this.busy && key.startsWith('box:')) { this.busy--; throw new Error('KV PUT failed: 429 Too Many Requests'); }
-    this.m.set(key, { value, metadata: opts.metadata, ttl: opts.expirationTtl });
-  }
+  async put(key, value, opts = {}) { this.m.set(key, { value, metadata: opts.metadata, ttl: opts.expirationTtl }); }
   async delete(key) { this.m.delete(key); }
   keys(prefix) { return [...this.m.keys()].filter((k) => k.startsWith(prefix)); }
 }
-const kv = new FakeKV();
-const env = { LABELS: kv };
+const db = new FakeD1(), kv = new FakeKV();
+const env = { DB: db, LABELS: kv };
 const call = (p, init = {}) => worker.fetch(new Request('https://api.example.workers.dev' + p, init), env);
 
 // ---- health and browser access ----
@@ -55,8 +65,8 @@ r = await call('/pair', { method: 'POST', headers: { Origin: PANEL } });
 const link = await r.json();
 ok(r.status === 201 && /^[A-Za-z0-9_-]{22}$/.test(link.box) && /^[A-Za-z0-9_-]{32}$/.test(link.key), 'linking gives a mailbox and a read key ' + JSON.stringify(link));
 ok(link.send === 'https://api.example.workers.dev/drop/' + link.box, 'and the phone’s sending address');
-const rec = JSON.parse(kv.m.get('box:' + link.box).value);
-ok(rec.key !== link.key && rec.key.length === 64, 'the read key itself is never stored, only its hash');
+const rec = db.rows('SELECT key FROM boxes WHERE box = ?', link.box)[0];
+ok(rec && rec.key !== link.key && rec.key.length === 64, 'the read key itself is never stored, only its hash');
 const auth = { Authorization: 'Bearer ' + link.key, Origin: PANEL };
 
 // ---- sending labels ----
@@ -64,10 +74,8 @@ const pdf = fs.readFileSync(path.join(HERE, 'fixtures/sample-return-label.pdf'))
 const png = fs.readFileSync(path.join(HERE, 'fixtures/mark-ship-good.png'));
 r = await call('/drop/' + link.box, { method: 'POST', body: pdf, headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent('Amazon return.pdf') } });
 ok(r.status === 201 && (await r.json()).ok === true, 'a PDF can be sent');
-kv.busy = 1;
 r = await call('/drop/' + link.box + '?reply=text', { method: 'POST', body: png });
 ok(r.status === 201 && (await r.text()) === 'Sent to Label Sheet Keeper.', 'the Shortcut gets a sentence back');
-ok(kv.busy === 0 && JSON.parse(kv.m.get('box:' + link.box).value).items.length === 2, 'a label sent right after another waits its turn and is kept');
 r = await call('/drop/' + link.box + '?reply=text', { method: 'POST', body: 'hello, not a label' });
 ok(r.status === 415 && /PDF or a picture/.test(await r.text()), 'other files are refused');
 r = await call('/drop/' + link.box, { method: 'POST', body: new Uint8Array(0) });
@@ -76,7 +84,8 @@ r = await call('/drop/' + link.box, { method: 'POST', body: new Uint8Array(10 * 
 ok(r.status === 413, 'a file over 10 MB is refused');
 r = await call('/drop/AAAAAAAAAAAAAAAAAAAAAA?reply=text', { method: 'POST', body: pdf });
 ok(r.status === 404 && /Link your phone again/.test(await r.text()), 'an unknown sending link says how to fix it');
-ok(kv.keys('file:' + link.box).every((k) => kv.m.get(k).ttl === 7 * 24 * 3600), 'labels are kept 7 days at most');
+ok(kv.keys('file:' + link.box).length === 2 && kv.keys('file:' + link.box).every((k) => kv.m.get(k).ttl === 7 * 24 * 3600), 'files are kept 7 days at most');
+ok(db.rows('SELECT sent FROM boxes WHERE box = ?', link.box)[0].sent === 2, 'sends are counted for the day');
 
 // ---- the panel picks them up ----
 r = await call('/box/' + link.box, { headers: { Origin: PANEL } });
@@ -94,24 +103,44 @@ r = await call('/box/' + link.box + '/' + list[0].id, { headers: { Origin: PANEL
 ok(r.status === 401, 'files need the read key too');
 r = await call('/box/' + link.box + '/' + list[0].id, { method: 'DELETE', headers: auth });
 ok(r.status === 200 && (await r.json()).waiting === 1, 'a picked-up label is deleted');
-ok(!kv.m.has('file:' + link.box + ':' + list[0].id), 'its file is gone from storage');
+ok(!kv.m.has('file:' + link.box + ':' + list[0].id) && db.rows('SELECT id FROM labels WHERE id = ?', list[0].id).length === 0, 'its file and its place in the list are gone');
 r = await call('/box/' + link.box + '/' + list[0].id, { headers: auth });
-ok(r.status === 404, 'and can’t be fetched again');
+ok(r.status === 404, 'and it can’t be fetched again');
+
+// ---- a label whose file hasn't reached this location yet ----
+const late = list[1].id;
+kv.hidden.add('file:' + link.box + ':' + late);
+r = await call('/box/' + link.box + '/' + late, { headers: auth });
+ok(r.status === 409 && /still on its way/.test((await r.json()).error), 'a label just sent but not here yet is “on its way”, not gone');
+ok(db.rows('SELECT id FROM labels WHERE id = ?', late).length === 1, 'and stays on the list');
+db.db.prepare('UPDATE labels SET at = ? WHERE id = ?').run(Date.now() - 6 * 60 * 1000, late);
+r = await call('/box/' + link.box + '/' + late, { headers: auth });
+ok(r.status === 404 && db.rows('SELECT id FROM labels WHERE id = ?', late).length === 0, 'one whose file never came is taken off the list');
+kv.hidden.clear();
 
 // ---- limits ----
-const stored = JSON.parse(kv.m.get('box:' + link.box).value);
-stored.items.push({ id: 'oldoldoldoldoldo', type: 'image/png', name: 'old', size: 1, at: Date.now() - 8 * 24 * 3600 * 1000 });
-await kv.put('box:' + link.box, JSON.stringify(stored));
+db.db.prepare('INSERT INTO labels (box, id, type, name, size, at) VALUES (?, ?, ?, ?, ?, ?)').run(link.box, 'oldoldoldoldoldo', 'image/png', 'old', 1, Date.now() - 8 * 24 * 3600 * 1000);
 list = (await (await call('/box/' + link.box, { headers: auth })).json()).items;
-ok(list.length === 1 && list.every((it) => it.id !== 'oldoldoldoldoldo'), 'labels older than 7 days aren’t listed');
-for (let i = 0; i < 19; i++) await call('/drop/' + link.box, { method: 'POST', body: png });
+ok(list.length === 0 && db.rows('SELECT id FROM labels WHERE id = ?', 'oldoldoldoldoldo').length === 0, 'labels older than 7 days aren’t listed, and are cleared');
+for (let i = 0; i < 20; i++) await call('/drop/' + link.box, { method: 'POST', body: png });
 r = await call('/drop/' + link.box + '?reply=text', { method: 'POST', body: png });
 ok(r.status === 429 && /Too many labels are waiting/.test(await r.text()), 'at most 20 labels wait at once');
+db.db.prepare('DELETE FROM labels WHERE box = ?').run(link.box);
+kv.keys('file:' + link.box).forEach((k) => kv.m.delete(k));
+db.db.prepare('UPDATE boxes SET day = ?, sent = 60 WHERE box = ?').run(new Date().toISOString().slice(0, 10), link.box);
+r = await call('/drop/' + link.box + '?reply=text', { method: 'POST', body: png });
+ok(r.status === 429 && /most labels for one day/.test(await r.text()), 'at most 60 labels a day');
+db.db.prepare('UPDATE boxes SET day = ? WHERE box = ?').run('2000-01-01', link.box);
+r = await call('/drop/' + link.box, { method: 'POST', body: png });
+ok(r.status === 201 && db.rows('SELECT sent FROM boxes WHERE box = ?', link.box)[0].sent === 1, 'the count starts over the next day');
 
 // ---- unlinking ----
 r = await call('/box/' + link.box, { method: 'DELETE', headers: auth });
-ok(r.status === 200 && !kv.m.has('box:' + link.box) && kv.keys('file:' + link.box).length === 0, 'unlinking deletes the mailbox and every label');
+ok(r.status === 200 && db.rows('SELECT box FROM boxes WHERE box = ?', link.box).length === 0 && db.rows('SELECT id FROM labels WHERE box = ?', link.box).length === 0, 'unlinking deletes the mailbox and its list');
+ok(kv.keys('file:' + link.box).length === 0, 'and every file');
 r = await call('/drop/' + link.box, { method: 'POST', body: pdf });
-ok(r.status === 404, 'the old sending link stops working');
+ok(r.status === 404 && db.rows('SELECT box FROM boxes WHERE box = ?', link.box).length === 0, 'the old sending link stops working at once, and doesn’t bring the mailbox back');
+r = await call('/box/' + link.box, { headers: auth });
+ok(r.status === 401, 'and the old read key no longer works');
 
 console.log('all', n, 'worker checks passed');
