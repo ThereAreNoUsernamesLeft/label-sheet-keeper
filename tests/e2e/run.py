@@ -214,6 +214,8 @@ try:
     pg.click('#addr-save'); pg.click('#addr-mine')
     pg.click('#pane-addr details summary')
     pg.set_input_files('#book-file', S + '/fixtures/contacts.vcf')
+    check(wait(pg, "!document.getElementById('imp').hidden") and pg.inner_text('#book-count') == '1', 'contacts file shows the list to choose from first')
+    pg.click('#imp-all'); pg.click('#imp-go')
     check(wait(pg, "document.getElementById('book-count').textContent === '3'"), 'contacts imported into address book', pg.inner_text('#book-count'))
     pg.click('.design:has-text("Return to")')
     pg.select_option('#addr-pick', label='My return address')

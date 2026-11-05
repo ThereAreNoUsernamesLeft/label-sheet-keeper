@@ -55,6 +55,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: python tests/e2e/run18.py
 
+      - name: Phone, email and second addresses; choosing contacts to import
+        if: ${{ !cancelled() }}
+        run: python tests/e2e/run19.py
+
       - name: Worker request handling
         if: ${{ !cancelled() }}
         run: node tests/worker-test.mjs

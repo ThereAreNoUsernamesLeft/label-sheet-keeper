@@ -59,7 +59,7 @@ a{color:var(--accent)}
 .row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
 .row.links{gap:4px 16px}
 input[type=number]{width:60px;font:inherit;padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);min-height:28px}
-input[type=text],input[type=url],select{width:100%;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);min-height:30px}
+input[type=text],input[type=url],input[type=tel],input[type=email],input[type=search],select{width:100%;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);min-height:30px}
 textarea{display:block;width:100%;font:13px/1.4 var(--f);padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);resize:vertical}
 .fl{display:block;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .check{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;cursor:pointer}
@@ -238,3 +238,21 @@ ol.book-list li span::before{counter-increment:wait;content:counter(wait) ". ";c
 .tally .saved{color:var(--muted)}
 .phone-qr{display:grid;justify-items:start;gap:6px}
 .phone-qr canvas{display:block;border:1px solid var(--line);border-radius:6px;background:#fff}
+/* Phone and email under the address, each with an "On label" box */
+.extras{display:grid;gap:6px}
+.xrow{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:6px;align-items:center}
+.xrow > label:first-child{font-size:12.5px;color:var(--muted)}
+.xrow .on{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);white-space:nowrap;cursor:pointer}
+.xrow .on input:disabled + *,.xrow .on:has(input:disabled){opacity:.55;cursor:default}
+.extras .links{align-items:center}
+/* Choosing contacts to import */
+.imp{display:grid;gap:6px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.imp .fl{margin:0}
+.imp-list{list-style:none;margin:0;padding:0;max-height:220px;overflow:auto;display:grid;gap:2px}
+.imp-list label{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:8px;align-items:start;padding:4px 2px;font-size:12.5px;cursor:pointer}
+.imp-list label input{grid-row:span 2;margin-top:2px}
+.imp-list small{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.imp-list .none{color:var(--muted);font-size:12.5px;padding:4px}
+/* A saved contact's second address, phones and emails */
+.book-edit .pair2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.book-list .book-edit input{width:100%;font-size:12.5px}

@@ -89,33 +89,66 @@
     });
   }
 
-  // ---------- contact cards (.vcf from Mac Contacts or Google Contacts) ----------
-  function parseVCard(text) {
+  // ---------- contacts ----------
+  // A contact: { name, lines, fields, lines2?, fields2?, phone, phone2, email, email2 }.
+  // lines/fields are the first address (as printed on a label, and as fields);
+  // lines2/fields2 a second one, like a PO box or a work address.
+  // Lists of contacts carry .skipped: how many had no street address.
+  function digitsOf(s) { return String(s || '').replace(/\D/g, ''); }
+  function firstTwo(list, same) {
+    var out = [];
+    list.forEach(function (v) {
+      v = String(v || '').trim();
+      if (v && out.length < 2 && !out.some(function (o) { return same(o) === same(v); })) out.push(v);
+    });
+    return out;
+  }
+  function makeContact(addrs, phones, emails) {
+    var p = firstTwo(phones, function (s) { return digitsOf(s) || s.toLowerCase(); });
+    var e = firstTwo(emails, function (s) { return s.toLowerCase(); });
+    var c = { name: addrs[0].lines[0], lines: addrs[0].lines, fields: addrs[0].fields, phone: p[0] || '', phone2: p[1] || '', email: e[0] || '', email2: e[1] || '' };
+    if (addrs[1]) { c.lines2 = addrs[1].lines; c.fields2 = addrs[1].fields; }
+    return c;
+  }
+  // Adds an address (fields) to a contact's list unless it's empty or a repeat.
+  function pushAddress(addrs, f, opts) {
+    var ls = addressLines(f, opts);
+    if (ls.length < 2) return;
+    var key = ls.join('\n').toLowerCase();
+    if (!addrs.some(function (a) { return a.lines.join('\n').toLowerCase() === key; })) addrs.push({ fields: f, lines: ls });
+  }
+
+  // ---------- contact cards (.vcf from Mac Contacts, Google or Outlook) ----------
+  function parseVCard(text, opts) {
     var lines = String(text || '').replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '').split(/\r?\n/);
     var out = [], cur = null;
     var unesc = function (s) { return String(s || '').replace(/\\n/gi, '\n').replace(/\\([,;\\])/g, '$1').trim(); };
     lines.forEach(function (line) {
-      if (/^BEGIN:VCARD/i.test(line)) { cur = { name: '', n: '', org: '', adr: [] }; return; }
+      if (/^BEGIN:VCARD/i.test(line)) { cur = { name: '', n: '', org: '', adr: [], tel: [], email: [] }; return; }
       if (/^END:VCARD/i.test(line)) { if (cur) out.push(cur); cur = null; return; }
       if (!cur) return;
       var idx = line.indexOf(':'); if (idx < 0) return;
       var key = line.slice(0, idx).toUpperCase(), val = line.slice(idx + 1);
       var prop = key.split(';')[0].replace(/^ITEM\d+\./, '');
+      // A preferred phone, email or address goes first.
+      var add = function (list, v) { if (!v) return; if (/[;,=]PREF(=1)?(?=[;,]|$)/.test(key)) list.unshift(v); else list.push(v); };
       if (prop === 'FN') cur.name = unesc(val);
       else if (prop === 'N') { var p = val.split(';'); cur.n = [unesc(p[1]), unesc(p[2]), unesc(p[0])].filter(Boolean).join(' '); }
       else if (prop === 'ORG') cur.org = unesc(val.split(';')[0]);
       else if (prop === 'ADR') {
         var a = val.split(';');
-        cur.adr.push({ street: unesc(a[2]), apt: unesc(a[1]), city: unesc(a[3]), state: unesc(a[4]), zip: unesc(a[5]), country: unesc(a[6]) });
-      }
+        add(cur.adr, { street: unesc(a[2]), apt: unesc(a[1]), city: unesc(a[3]), state: unesc(a[4]), zip: unesc(a[5]), country: unesc(a[6]) });
+      } else if (prop === 'TEL') add(cur.tel, unesc(val).replace(/^tel:/i, ''));
+      else if (prop === 'EMAIL') add(cur.email, unesc(val).replace(/^mailto:/i, ''));
     });
     var contacts = [];
+    contacts.skipped = 0;
     out.forEach(function (c) {
+      var name = c.name || c.n || c.org, addrs = [];
       c.adr.forEach(function (a) {
-        var addr = { name: c.name || c.n, company: c.org, street: a.street, apt: a.apt, city: a.city, state: a.state, zip: a.zip, country: a.country };
-        var ls = addressLines(addr);
-        if (ls.length > 1) contacts.push({ name: ls[0], lines: ls, fields: addr });
+        pushAddress(addrs, { name: name, company: c.org, street: a.street, apt: a.apt, city: a.city, state: a.state, zip: a.zip, country: a.country }, opts);
       });
+      if (addrs.length) contacts.push(makeContact(addrs, c.tel, c.email)); else contacts.skipped++;
     });
     return contacts;
   }
@@ -150,25 +183,97 @@
     return hits >= 2 ? map : null;
   }
 
+  // Column sets for more than one address: Google's "Address 1 - Street",
+  // "Address 2 - …"; Outlook's "Business Street", "Home …", "Other …".
+  var ADDR_PART = { 'street': 'street', 'street 1': 'street', 'street 2': 'apt', 'extended address': 'apt', 'po box': 'pobox', 'city': 'city',
+    'region': 'state', 'state': 'state', 'postal code': 'zip', 'zip': 'zip', 'country': 'country', 'country/region': 'country', 'formatted': 'formatted' };
+  function addressSets(header) {
+    var sets = {}, order = [];
+    (header || []).forEach(function (cell, i) {
+      var h = norm(cell);
+      var m = /^(address \d+) - (.+)$/.exec(h) || /^(business|home|other|mailing) (street(?: \d)?|city|state|postal code|zip|country\/region|country|po box)$/.exec(h);
+      var k = m && ADDR_PART[m[2]];
+      if (!k) return;
+      if (!sets[m[1]]) { sets[m[1]] = {}; order.push(m[1]); }
+      if (sets[m[1]][k] === undefined) sets[m[1]][k] = i;
+    });
+    return order.map(function (p) { return sets[p]; }).filter(function (s) { return s.street !== undefined || s.city !== undefined || s.formatted !== undefined; });
+  }
+  // Phone and email columns, most useful first ("Primary Phone", "Mobile Phone"...).
+  function phoneRank(h) { return /primary/.test(h) ? 0 : /mobile|cell|^phone$|^phone \d - value$|^phone 1|^telephone|^tel$|phone number/.test(h) ? 1 : /home/.test(h) ? 2 : /business|work/.test(h) ? 3 : /assistant|callback|car /.test(h) ? 5 : 4; }
+  function contactColumns(header) {
+    var phones = [], emails = [];
+    (header || []).forEach(function (cell, i) {
+      var h = norm(cell);
+      if (/ - (label|type)$|display name|fax|pager|telex|isdn/.test(h)) return;
+      if (/e-?mail/.test(h)) emails.push(i);
+      else if (/phone|mobile|^cell|telephone|^tel$/.test(h)) phones.push(i);
+    });
+    phones.sort(function (a, b) { return phoneRank(norm(header[a])) - phoneRank(norm(header[b])) || a - b; });
+    return { phones: phones, emails: emails };
+  }
+  // Google puts several values in one cell: "617-555-0100 ::: 617-555-0101".
+  function cellValues(r, cols) {
+    var out = [];
+    cols.forEach(function (i) { String(r[i] === undefined ? '' : r[i]).split(/\s*:::\s*/).forEach(function (v) { v = v.trim(); if (v) out.push(v); }); });
+    return out;
+  }
+  // One row -> { name, company, addrs: [fields…], phones, emails }.
+  function readRow(r, map, sets, cols) {
+    var at = function (i) { return i === undefined ? '' : String(r[i] === undefined ? '' : r[i]).trim(); };
+    var get = function (k) { return map && map[k] !== undefined ? at(map[k]) : ''; };
+    var name = get('name') || [get('first'), get('middle'), get('last')].filter(Boolean).join(' ');
+    var company = get('company'), addrs = [];
+    var fromParts = function (s) {
+      var a = { name: name, company: company, street: at(s.street), apt: at(s.apt), city: at(s.city), state: at(s.state), zip: at(s.zip), country: at(s.country) };
+      if (!a.street && at(s.pobox)) a.street = /^\d+$/.test(at(s.pobox)) ? 'PO Box ' + at(s.pobox) : at(s.pobox);
+      if (!a.street && !a.city && at(s.formatted)) a.extra = at(s.formatted).split(/\r?\n/).map(function (x) { return x.trim(); }).filter(Boolean);
+      return a;
+    };
+    if (sets.length) sets.forEach(function (s) { var a = fromParts(s); if (a.street || a.city || a.extra) addrs.push(a); });
+    else {
+      var a = { name: name };
+      FIELDS.slice(1).forEach(function (k) { a[k] = get(k); });
+      if (!a.street && !a.city && get('formatted')) a.extra = get('formatted').split(/\r?\n/).map(function (x) { return x.trim(); }).filter(Boolean);
+      addrs.push(a);
+    }
+    return { name: name, company: company, addrs: addrs, phones: cellValues(r, cols.phones), emails: cellValues(r, cols.emails) };
+  }
+  // Without a header row, columns go in this order. Phone and email follow the address.
+  var POS = FIELDS.concat(['phone', 'email']);
+  function positional(r) {
+    var a = {};
+    POS.forEach(function (k, i) { a[k] = String(r[i] === undefined ? '' : r[i]).trim(); });
+    return a;
+  }
+
+  // Rows from a spreadsheet -> one address (fields, plus phone and email) per row.
   function rowsToAddresses(rows) {
     if (!rows || !rows.length) return [];
     var map = headerMap(rows[0]);
-    var body = map ? rows.slice(1) : rows;
-    return body.map(function (r) {
-      var get = function (k) { return map && map[k] !== undefined ? String(r[map[k]] || '').trim() : ''; };
-      var a = {};
-      if (map) {
-        a.name = get('name') || [get('first'), get('middle'), get('last')].filter(Boolean).join(' ');
-        FIELDS.slice(1).forEach(function (k) { a[k] = get(k); });
-        if (!a.street && !a.city && get('formatted')) {
-          var parts = get('formatted').split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
-          a.extra = parts;
-        }
-      } else {
-        FIELDS.forEach(function (k, i) { a[k] = String(r[i] === undefined ? '' : r[i]).trim(); });
-      }
+    if (!map) return rows.map(positional).filter(function (a) { return addressLines(a).length > 0; });
+    var sets = addressSets(rows[0]), cols = contactColumns(rows[0]);
+    return rows.slice(1).map(function (r) {
+      var c = readRow(r, map, sets, cols);
+      var a = c.addrs[0] || { name: c.name, company: c.company };
+      a.phone = c.phones[0] || ''; a.email = c.emails[0] || '';
       return a;
     }).filter(function (a) { return addressLines(a).length > 0; });
+  }
+  // Rows from a contacts export -> contacts, with up to two addresses, phones and emails.
+  function rowsToContacts(rows, opts) {
+    var out = [];
+    out.skipped = 0;
+    if (!rows || !rows.length) return out;
+    var map = headerMap(rows[0]);
+    var sets = map ? addressSets(rows[0]) : [], cols = map ? contactColumns(rows[0]) : { phones: [], emails: [] };
+    (map ? rows.slice(1) : rows).forEach(function (r) {
+      var c = map ? readRow(r, map, sets, cols) : (function (a) { return { addrs: [a], phones: [a.phone], emails: [a.email] }; })(positional(r));
+      var addrs = [];
+      c.addrs.forEach(function (a) { pushAddress(addrs, a, opts); });
+      if (addrs.length) out.push(makeContact(addrs, c.phones, c.emails)); else if (r.some(function (x) { return String(x).trim(); })) out.skipped++;
+    });
+    return out;
   }
 
   var US = /^(us|usa|u\.s\.a?\.?|united states( of america)?)$/i;
@@ -702,7 +807,7 @@
 
   var api = {
     parseDelimited: parseDelimited, readXlsx: readXlsx, parseVCard: parseVCard,
-    headerMap: headerMap, rowsToAddresses: rowsToAddresses, addressLines: addressLines, fixZip: fixZip, linesToFields: linesToFields,
+    headerMap: headerMap, rowsToAddresses: rowsToAddresses, rowsToContacts: rowsToContacts, addressLines: addressLines, fixZip: fixZip, linesToFields: linesToFields,
     fontCss: fontCss, textHeight: textHeight, fits: fits, fitScale: fitScale, findLabelBorder: findLabelBorder,
     unwrapTable: unwrapTable, countryOf: countryOf, fixPostal: fixPostal, regionCode: regionCode, lookupPostal: lookupPostal, suggestAddresses: suggestAddresses,
     reorderLink: reorderLink, numberText: numberText, qrMatrix: qrMatrix, code128: code128, findGrid: findGrid, alignFromScan: alignFromScan,

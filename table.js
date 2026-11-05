@@ -9,7 +9,7 @@
   'use strict';
 
   var T = window.LSK_TOOLS;
-  var COLS = ['name', 'company', 'street', 'apt', 'city', 'state', 'zip'];
+  var COLS = ['name', 'company', 'street', 'apt', 'city', 'state', 'zip', 'phone', 'email'];
   var DRAFT = 'lsk.tableDraft', INFO = 'lsk.tableInfo', BOOK = 'lsk.addressBook', GEO_KEY = 'lsk.geoKey', SUGGEST = 'lsk.suggest';
   var rowsEl = document.getElementById('rows');
 
@@ -88,10 +88,13 @@
   }
 
   // ---------- turning other data into rows ----------
+  // Address fields with a contact's phone and email.
+  function withContact(fields, c) { fields.phone = c.phone || ''; fields.email = c.email || ''; return fields; }
   function fieldsToRow(a) {
     if (a.extra && a.extra.length && !a.street && !a.city) {
       var f = T.linesToFields([a.name].concat(a.extra));
       f.company = a.company || f.company;
+      f.phone = a.phone || ''; f.email = a.email || '';
       a = f;
     }
     return COLS.map(function (c) { return c === 'zip' ? T.fixZip(a.zip, a.state) : (a[c] || ''); });
@@ -268,7 +271,7 @@
     } else {
       reader.onload = function () {
         var text = String(reader.result || '');
-        if (/\.vcf$/.test(name) || /BEGIN:VCARD/i.test(text)) done(T.parseVCard(text).map(function (c) { return fieldsToRow(c.fields); }));
+        if (/\.vcf$/.test(name) || /BEGIN:VCARD/i.test(text)) done(T.parseVCard(text).map(function (c) { return fieldsToRow(withContact(c.fields, c)); }));
         else done(rowsFromGrid(T.parseDelimited(text)));
       };
       reader.readAsText(file);
@@ -296,7 +299,7 @@
     var g = v.indexOf('group:') === 0 ? v.slice(6) : null;
     var inG = function (e) { return (Array.isArray(e.groups) ? e.groups : []).some(function (x) { return x.toLowerCase() === g; }); };
     var pick = v === '*' ? b : g !== null ? b.filter(inG) : b.filter(function (e) { return e.id === v; });
-    if (pick.length) { appendRows(pick.map(function (e) { return fieldsToRow(T.linesToFields(e.lines)); })); msg('Added ' + plural(pick.length, 'saved address', 'es') + '.'); }
+    if (pick.length) { appendRows(pick.map(function (e) { return fieldsToRow(withContact(T.linesToFields(e.show && e.show.addr === 2 && e.lines2 ? e.lines2 : e.lines), e)); })); msg('Added ' + plural(pick.length, 'saved address', 'es') + '.'); }
     $('book').value = '';
   });
 
@@ -316,7 +319,7 @@
     var rows = readRows();
     if (!filledRows().length) { msg('Add at least one address first.', true); return; }
     store(DRAFT, '[]');
-    send({ type: 'fill', rows: rows });
+    send({ type: 'fill', rows: rows, show: { phone: $('on-phone').checked, email: $('on-email').checked } });
   });
   $('cancel').addEventListener('click', function () { send({ type: 'close' }); });
 
@@ -325,6 +328,8 @@
     var info = json(INFO) || {};
     $('info').textContent = (info.name ? info.name + '. ' : '') + 'One row per label; the first column shows which label. Type addresses, paste cells from Excel or Numbers, or open a file. ' +
       (suggestOn() ? 'Type a house number and street for address suggestions.' : 'A ZIP or postal code fills in the city.');
+    var on = info.onLabel || {};
+    $('on-phone').checked = !!on.phone; $('on-email').checked = !!on.email;
     var draft = json(DRAFT);
     setRows(Array.isArray(draft) ? draft : []);
     fillBookPicker();

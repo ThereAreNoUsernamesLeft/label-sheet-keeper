@@ -26,7 +26,7 @@ h1{margin:0;font-size:16px;font-weight:700}
 .btn.ghost{background:var(--surface);border-color:var(--line);color:var(--ink)}
 .btn:disabled{opacity:.45;cursor:default}
 .grid-wrap{overflow:auto;margin:0 16px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
-.grid{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed}
+.grid{border-collapse:collapse;width:100%;min-width:980px;table-layout:fixed}
 .grid th{white-space:nowrap;position:sticky;top:0;z-index:1;background:var(--sunken);text-align:left;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line)}
 .grid td{border-bottom:1px solid var(--grid);border-right:1px solid var(--grid);padding:0}
 .grid td:first-child{text-align:right;padding:0 8px;color:var(--muted);font:12px var(--f-mono);background:var(--sunken)}
@@ -36,7 +36,7 @@ h1{margin:0;font-size:16px;font-weight:700}
 .grid tr.spill td:first-child{color:var(--accent)}
 .grid tr.divider td{background:var(--accent-soft);color:var(--ink);font:600 12px var(--f);text-align:left;padding:6px 10px;border-right:0}
 .grid .x{background:none;border:0;color:var(--muted);cursor:pointer;font-size:15px;padding:4px}
-col.c-n{width:52px} col.c-name{width:17%} col.c-co{width:11%} col.c-st{width:20%} col.c-apt{width:84px} col.c-city{width:13%} col.c-state{width:88px} col.c-zip{width:94px} col.c-x{width:32px}
+col.c-n{width:52px} col.c-name{width:15%} col.c-co{width:10%} col.c-st{width:17%} col.c-apt{width:80px} col.c-city{width:11%} col.c-state{width:80px} col.c-zip{width:88px} col.c-phone{width:118px} col.c-email{width:15%} col.c-x{width:32px}
 .bottom{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:10px 16px 14px}
 .bottom .hint{margin:0}
 .msg{margin:0;flex:1;font-size:12.5px;min-width:160px}
@@ -48,3 +48,5 @@ col.c-n{width:52px} col.c-name{width:17%} col.c-co{width:11%} col.c-st{width:20%
 .sugg button[aria-selected="true"],.sugg button:hover{background:var(--accent-soft)}
 .sugg-credit{margin:0;padding:5px 10px;font-size:11px;color:var(--muted);border-top:1px solid var(--grid)}
 .sugg-credit a{color:inherit}
+.onl{display:inline-flex;align-items:center;gap:10px;font-size:12.5px;color:var(--muted)}
+.onl label{display:inline-flex;align-items:center;gap:4px;color:var(--ink);cursor:pointer}

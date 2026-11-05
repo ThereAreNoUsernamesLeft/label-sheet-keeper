@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.8';
+  var VERSION = '1.9';
   var ADDIN_ID = '8d491c85-a76d-4d26-a6f5-b7b2dd4a1711';   // must match manifest.xml <Id>
   var F = window.LSK_FORMATS;
   var S = window.LSK_SHEET;
@@ -25,6 +25,7 @@
     spots: 'lskSpots',         // {n: {at, t, m}} when each used label was printed or marked
     snap: 'lskSnapshot',       // {u: [used], r: {n: first line}} for repairs
     id: 'lskSheetId',
+    onLabel: 'lskOnLabel',     // {phone, email}: on this sheet's address labels to start with
     autoShow: 'Office.AutoShowTaskpaneWithDocument'
   };
   // Stored on this Mac
@@ -39,6 +40,8 @@
   };
   // The Label Sheet Keeper server (a Cloudflare Worker, see worker/).
   var API = 'https://api.labelsheetkeeper.workers.dev';
+  // A contact's phones and emails, in the order they go under an address.
+  var XF = ['phone', 'phone2', 'email', 'email2'];
   var USED_TAG = 'lsk-used';
 
   // A missing element (for example while Word still shows an older copy of
@@ -1477,12 +1480,15 @@
   function book() { var b = storeJson(LS.book); return Array.isArray(b) ? b : []; }
   // The last ten addresses put on a label, newest first: { lines, at }
   function recent() { var r = storeJson(LS.recent); return Array.isArray(r) ? r : []; }
-  function noteRecent(lines) {
+  // x: { id, which, vals, on } — the contact, phones and emails that went with it.
+  function noteRecent(lines, x) {
     lines = (lines || []).map(function (l) { return String(l).trim(); }).filter(Boolean);
     if (!lines.length) return;
     var key = lines.join('\n').toLowerCase();
     var r = recent().filter(function (e) { return e.lines.join('\n').toLowerCase() !== key; });
-    r.unshift({ lines: lines, at: Date.now() });
+    var item = { lines: lines, at: Date.now() };
+    if (x && (x.id || XF.some(function (k) { return x.vals && x.vals[k]; }))) item.x = x;
+    r.unshift(item);
     storeJson(LS.recent, r.slice(0, 10));
   }
   function groupsOf(e) { return Array.isArray(e.groups) ? e.groups : []; }
@@ -1496,19 +1502,54 @@
   // A saved address being changed in the address book list. Kept across
   // redraws so a refresh doesn't lose what's being typed.
   var bookEdit = null;   // { id, text }
-  function addToBook(list) {
-    var b = book(), seen = {}, added = 0;
-    b.forEach(function (e) { seen[e.lines.join('\n').toLowerCase()] = true; });
-    list.forEach(function (lines) {
-      lines = lines.map(function (s) { return String(s).trim(); }).filter(Boolean);
-      var key = lines.join('\n').toLowerCase();
-      if (!lines.length || seen[key]) return;
-      seen[key] = true; added++;
-      b.push({ id: uid(), name: lines[0], lines: lines });
+  // A saved contact: { id, name, lines, lines2?, phone?, phone2?, email?, email2?,
+  // groups?, show? }. lines2 is a second address (a PO box, work...). show is
+  // what goes on its labels when that was remembered for it:
+  // { addr: 1|2, phone, phone2, email, email2 }.
+  function keyOf(lines) { return lines.join('\n').toLowerCase(); }
+  // Adds contacts ({ lines, lines2?, phone?... }). One already saved (same
+  // address) gets the details it's missing instead. -> { added, updated }
+  function addContacts(list) {
+    var b = book(), byKey = {}, added = 0, updated = 0;
+    b.forEach(function (e) { byKey[keyOf(e.lines)] = e; });
+    list.forEach(function (c) {
+      var lines = (c.lines || []).map(function (s) { return String(s).trim(); }).filter(Boolean);
+      if (!lines.length) return;
+      var e = byKey[keyOf(lines)], lines2 = (c.lines2 || []).map(function (s) { return String(s).trim(); }).filter(Boolean);
+      if (e) {
+        var changed = false;
+        XF.forEach(function (k) { if (c[k] && !e[k]) { e[k] = String(c[k]).trim(); changed = true; } });
+        if (lines2.length && !e.lines2) { e.lines2 = lines2; changed = true; }
+        if (changed) updated++;
+        return;
+      }
+      e = { id: uid(), name: lines[0], lines: lines };
+      if (lines2.length) e.lines2 = lines2;
+      XF.forEach(function (k) { if (c[k]) e[k] = String(c[k]).trim(); });
+      b.push(e); byKey[keyOf(lines)] = e; added++;
     });
     b.sort(function (x, y) { return x.name.localeCompare(y.name); });
     storeJson(LS.book, b);
-    return added;
+    return { added: added, updated: updated };
+  }
+  function contactById(id) { return id ? book().filter(function (e) { return e.id === id; })[0] || null : null; }
+  // Phone and email on this sheet's labels unless a contact says otherwise. Kept in the document.
+  function sheetOn() { var s = getSetting(DOC.onLabel); return { phone: !!(s && s.phone), email: !!(s && s.email) }; }
+  function defaultOn(e) {
+    var s = sheetOn(), r = e && e.show;
+    return { phone: r ? !!r.phone : s.phone, phone2: !!(r && r.phone2), email: r ? !!r.email : s.email, email2: !!(r && r.email2) };
+  }
+  // The ticked phones and emails that have something in them, as label lines.
+  function extraLines(vals, on) { return XF.filter(function (k) { return on[k] && vals[k]; }).map(function (k) { return String(vals[k]).trim(); }); }
+  // A saved contact's label: the address it uses, then its phone and email as chosen.
+  function contactLines(e) {
+    var base = e.show && e.show.addr === 2 && e.lines2 ? e.lines2 : e.lines;
+    return base.concat(extraLines(e, defaultOn(e)));
+  }
+  // A second address typed without the name gets it, so the label still says who.
+  function withName(lines2, name) {
+    if (!lines2.length || !name) return lines2;
+    return /^(\d|p\.?\s*o\.?\s*box|box\s|#)/i.test(lines2[0]) ? [name].concat(lines2) : lines2;
   }
   function textLines(t) { return String(t || '').split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean); }
   function fromAddress() { return store(LS.from) || getSetting(LS.from) || ''; }
@@ -1723,7 +1764,7 @@
   function openTableWindow() {
     if (!Office.context.ui || !Office.context.ui.displayDialogAsync) { say('This version of Word can’t open the table window. Update Word and try again.', 'warn'); return; }
     if (tableDlg) { say('The table window is already open.'); return; }
-    storeJson(LS.tableInfo, { open: openList().length, labels: openList(), name: st.fmt.name, per: total() });
+    storeJson(LS.tableInfo, { open: openList().length, labels: openList(), name: st.fmt.name, per: total(), onLabel: sheetOn() });
     var url = new URL('table.html', location.href.split('?')[0]).href + '?t=' + Date.now();
     Office.context.ui.displayDialogAsync(url, { height: 70, width: 60, displayInIframe: false }, function (res) {
       if (res.status !== Office.AsyncResultStatus.Succeeded) { say('The table window couldn’t open' + (res.error && res.error.message ? ': ' + res.error.message : '') + '.', 'warn'); return; }
@@ -1731,7 +1772,7 @@
       tableDlg.addEventHandler(Office.EventType.DialogMessageReceived, function (arg) {
         var msg = null;
         try { msg = JSON.parse(arg.message); } catch (e) { return; }
-        if (msg && msg.type === 'fill') { closeTable(); fillFromRows(msg.rows || []); }
+        if (msg && msg.type === 'fill') { closeTable(); fillFromRows(msg.rows || [], msg.show); }
         else if (msg && msg.type === 'close') closeTable();
       });
       tableDlg.addEventHandler(Office.EventType.DialogEventReceived, function () { tableDlg = null; });
@@ -1742,10 +1783,14 @@
   // rows: [[name, company, street, apt, city, state, zip], ...], one per label
   // in order: row 1 goes on the first open label, and so on. An empty row
   // leaves its label open. Rows past the open labels go on new sheets.
-  function fillFromRows(rows) {
+  // Rows from the table window: name, company, street, apt, city, state, zip,
+  // phone, email. show says whether the phone and email columns go on the labels.
+  function fillFromRows(rows, show) {
+    show = show || sheetOn();
     var lines = (rows || []).map(function (r) {
       r = r || [];
-      return T.addressLines({ name: r[0], company: r[1], street: r[2], apt: r[3], city: r[4], state: r[5], zip: r[6] }, { home: homeCountry() });
+      var l = T.addressLines({ name: r[0], company: r[1], street: r[2], apt: r[3], city: r[4], state: r[5], zip: r[6] }, { home: homeCountry() });
+      return l.length ? l.concat(extraLines({ phone: r[7], email: r[8] }, show)) : l;
     });
     while (lines.length && !lines[lines.length - 1].length) lines.pop();
     var count = lines.filter(function (l) { return l.length; }).length;
@@ -1768,7 +1813,7 @@
       return queueChange(function () { return writeEach(items); }).then(refresh);
     };
     if (!rest.length) {
-      fillHere().then(function () { say('Filled ' + labelList(nums) + ' ' + from + '.'); });
+      fillHere().then(function () { say('Filled ' + labelList(nums) + ' ' + from + '.'); askShrink(nums); });
       return;
     }
     askOverflow(f, nums.length, rest.map(parasFor), 'address', fillHere, function (msg) {
@@ -2152,10 +2197,168 @@
     var e = book().filter(function (k) { return k.id === v; })[0];
     return e ? e.lines : null;
   }
+
+  // ---------- phone and email under the address ----------
+  // The address box in use (Address, or Ship to on shipping sheets) and what
+  // came with it: the saved contact it was picked from and which address.
+  var xs = { id: '', which: 1 };
+  function addrBox() { return st.fmt && st.fmt.shipping ? $('to-addr') : $('addr-text'); }
+  function xVals() { var o = {}; XF.forEach(function (k) { o[k] = $('x-' + k).value.trim(); }); return o; }
+  function xOn() { var o = {}; XF.forEach(function (k) { o[k] = $('x-' + k + '-on').checked; }); return o; }
+  function setExtras(vals, on) {
+    XF.forEach(function (k) { $('x-' + k).value = (vals && vals[k]) || ''; $('x-' + k + '-on').checked = !!(on && on[k]); });
+    renderExtras();
+  }
+  function clearExtras() { xs = { id: '', which: 1 }; setExtras(null, defaultOn(null)); }
+  // The address box's lines plus the ticked phones and emails.
+  function boxLines() { return textLines(addrBox().value).concat(extraLines(xVals(), xOn())); }
+  function renderExtras() {
+    var e = contactById(xs.id), vals = xVals(), on = xOn(), s = sheetOn();
+    if (xs.id && !e) xs = { id: '', which: 1 };
+    $('x-phone2-row').hidden = !(vals.phone2 || (e && e.phone2));
+    $('x-email2-row').hidden = !(vals.email2 || (e && e.email2));
+    XF.forEach(function (k) { $('x-' + k + '-on').disabled = !vals[k]; });
+    $('addr-which').hidden = !(e && e.lines2);
+    $('addr-which-1').setAttribute('aria-checked', String(xs.which !== 2));
+    $('addr-which-2').setAttribute('aria-checked', String(xs.which === 2));
+    // Offer to keep a changed choice, for the sheet or for the contact.
+    $('x-sheet').hidden = !((vals.phone && on.phone !== s.phone) || (vals.email && on.email !== s.email));
+    var contactDiff = false;
+    if (e) {
+      var d = defaultOn(e), r = e.show || {};
+      contactDiff = XF.some(function (k) { return (vals[k] || '') !== (e[k] || '') || (vals[k] && on[k] !== d[k]); }) || (xs.which === 2) !== (r.addr === 2);
+      $('x-contact').textContent = 'Remember for ' + e.name;
+    }
+    $('x-contact').hidden = !contactDiff;
+    $('x-keep').hidden = $('x-sheet').hidden && $('x-contact').hidden;
+  }
+  // A choice from the Recent and saved addresses list goes into the address box.
+  function loadPicked(v, box) {
+    var e = contactById(v), r = /^recent:\d+$/.test(v) ? recent()[Number(v.slice(7))] : null;
+    if (r && r.x && contactById(r.x.id)) e = null;
+    if (e) {
+      xs = { id: e.id, which: e.show && e.show.addr === 2 && e.lines2 ? 2 : 1 };
+      box.value = (xs.which === 2 ? e.lines2 : e.lines).join('\n');
+      setExtras(e, defaultOn(e));
+      return;
+    }
+    var lines = pickedLines(v);
+    if (!lines) return;
+    box.value = lines.join('\n');
+    if (r && r.x) { xs = { id: contactById(r.x.id) ? r.x.id : '', which: r.x.which === 2 ? 2 : 1 }; setExtras(r.x.vals, r.x.on); } else clearExtras();
+  }
+  function switchWhich(n) {
+    var e = contactById(xs.id);
+    if (!e || (n === 2 && !e.lines2) || xs.which === n) return;
+    xs.which = n;
+    addrBox().value = (n === 2 ? e.lines2 : e.lines).join('\n');
+    renderExtras();
+  }
+  // What to remember in Recent: the address and what went with it.
+  function extrasNote() { return { id: xs.id, which: xs.which, vals: xVals(), on: xOn() }; }
+  // After addresses go on labels: if text may be cut off, say so and offer to shrink it.
+  function askShrink(nums) {
+    if (!st.fmt || st.fmt.shipping) return;
+    var over = nums.filter(function (n) { return st.over[n]; });
+    if (!over.length) return;
+    ask('The text may be cut off on ' + labelList(over) + '. Shrink it to fit?', 'Shrink', function () { doFit(over); });
+  }
+  // ---------- choosing contacts to import ----------
+  var imp = null;   // { name, list: [contact], picked: {index: true}, filter, skipped }
+  function startImport(fileName, list) {
+    if (!list.length) {
+      imp = null; renderImport();
+      say('No contacts with a street address were found in that file.', 'warn');
+      return;
+    }
+    imp = { name: fileName, list: list, picked: {}, filter: '', skipped: list.skipped || 0 };
+    $('imp-filter').value = '';
+    var sec = $('imp').closest('details');
+    if (sec) sec.open = true;
+    renderImport();
+    try { $('imp').scrollIntoView({ block: 'nearest' }); } catch (e) { /* old browser */ }
+    say('Tick the contacts to import, then click Import.');
+  }
+  function importText(c) { return [c.lines.join(' '), (c.lines2 || []).join(' '), c.phone, c.phone2, c.email, c.email2].join(' ').toLowerCase(); }
+  function shownImport() {
+    var q = imp ? imp.filter.trim().toLowerCase() : '';
+    return imp ? imp.list.map(function (c, i) { return i; }).filter(function (i) { return !q || importText(imp.list[i]).indexOf(q) >= 0; }) : [];
+  }
+  function renderImport() {
+    $('imp').hidden = !imp;
+    if (!imp) return;
+    var have = {}, ul = $('imp-list');
+    book().forEach(function (e) { have[keyOf(e.lines)] = true; });
+    ul.innerHTML = '';
+    var shown = shownImport();
+    shown.forEach(function (i) {
+      var c = imp.list[i], li = el('li'), lab = el('label'), cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = !!imp.picked[i];
+      cb.addEventListener('change', function () { if (cb.checked) imp.picked[i] = true; else delete imp.picked[i]; renderImportCount(); });
+      var extra = [c.lines2 ? '2 addresses' : '', c.phone ? c.phone : '', c.email ? c.email : '', have[keyOf(c.lines)] ? 'already saved' : ''].filter(Boolean);
+      lab.appendChild(cb);
+      lab.appendChild(el('span', '', c.lines[0]));
+      lab.appendChild(el('small', '', c.lines.slice(1).join(', ') + (extra.length ? ' · ' + extra.join(' · ') : '')));
+      li.appendChild(lab); ul.appendChild(li);
+    });
+    if (!shown.length) ul.appendChild(el('li', 'none', 'No contacts match.'));
+    $('imp-head').textContent = 'Choose contacts to import from ' + imp.name + ' (' + imp.list.length + ')';
+    $('imp-note').textContent = imp.skipped ? plural(imp.skipped, 'contact') + ' without a street address ' + (imp.skipped === 1 ? 'was' : 'were') + ' left out.' : '';
+    renderImportCount();
+  }
+  function renderImportCount() {
+    var k = imp ? Object.keys(imp.picked).length : 0;
+    $('imp-go').textContent = k ? 'Import ' + plural(k, 'contact') : 'Import';
+    $('imp-go').disabled = !k;
+  }
+
+  function wireExtras() {
+    XF.forEach(function (k) {
+      $('x-' + k).addEventListener('input', function () {
+        // A phone or email typed in: tick it if this sheet (or contact) puts it on labels.
+        var on = $('x-' + k + '-on'), v = $('x-' + k).value.trim();
+        if (v && on.disabled) on.checked = !!defaultOn(contactById(xs.id))[k];
+        renderExtras();
+      });
+      $('x-' + k + '-on').addEventListener('change', renderExtras);
+    });
+    $('addr-which-1').addEventListener('click', function () { switchWhich(1); });
+    $('addr-which-2').addEventListener('click', function () { switchWhich(2); });
+    [$('addr-text'), $('to-addr')].forEach(function (box) {
+      box.addEventListener('input', function () { if (!box.value.trim()) clearExtras(); });
+    });
+    $('x-sheet').addEventListener('click', function () {
+      var on = xOn(), vals = xVals(), s = sheetOn();
+      var next = { phone: vals.phone ? on.phone : s.phone, email: vals.email ? on.email : s.email };
+      setSetting(DOC.onLabel, next);
+      renderExtras();
+      say('Saved for this sheet: ' + (next.phone ? 'phone' : 'no phone') + ' and ' + (next.email ? 'email' : 'no email') + ' on new labels.');
+    });
+    $('x-contact').addEventListener('click', function () {
+      var b = book(), vals = xVals(), on = xOn(), name = '';
+      b.forEach(function (e) {
+        if (e.id !== xs.id) return;
+        XF.forEach(function (k) { if (vals[k]) e[k] = vals[k]; else delete e[k]; });
+        e.show = { addr: xs.which === 2 && e.lines2 ? 2 : 1 };
+        XF.forEach(function (k) { e.show[k] = !!(vals[k] && on[k]); });
+        name = e.name;
+      });
+      if (!name) return;
+      storeJson(LS.book, b);
+      renderAddress();
+      say('Saved for ' + name + '. Next time, their phone, email and choices come back.');
+    });
+  }
   function renderAddress() {
     var f = st.fmt, n = nextOpen();
     $('addr-plain').hidden = !!f.shipping;
     $('addr-ship').hidden = !f.shipping;
+    // The address switch goes above the address box in use, phone and email below it.
+    var abox = addrBox();
+    if (abox.previousElementSibling !== $('addr-which')) abox.parentNode.insertBefore($('addr-which'), abox);
+    if (abox.nextElementSibling !== $('addr-extras')) abox.parentNode.insertBefore($('addr-extras'), abox.nextSibling);
+    renderExtras();
+    renderImport();
     if (f.shipping) {
       pickerOptions($('to-pick'), false);
       if (document.activeElement !== $('from-addr')) $('from-addr').value = fromAddress();
@@ -2204,9 +2407,14 @@
       var li = el('li');
       if (bookEdit && bookEdit.id === e.id) { li.className = 'editing'; li.appendChild(bookEditor(e)); ul.appendChild(li); return; }
       var name = el('button', 'addr', e.lines.join(', ')); name.type = 'button';
-      name.title = e.lines.join('\n') + (groupsOf(e).length ? '\nGroups: ' + groupsOf(e).join(', ') : '') + '\n\nClick to edit';
+      var more = (e.lines2 ? '\nAddress 2: ' + e.lines2.join(', ') : '') + XF.filter(function (k) { return e[k]; }).map(function (k) { return '\n' + e[k]; }).join('');
+      name.title = e.lines.join('\n') + more + (groupsOf(e).length ? '\nGroups: ' + groupsOf(e).join(', ') : '') + '\n\nClick to edit';
       name.setAttribute('aria-label', 'Edit ' + e.name);
-      name.addEventListener('click', function () { bookEdit = { id: e.id, text: e.lines.join('\n'), groups: groupsOf(e).join(', ') }; renderAddress(); var ta = $('book-edit'); ta.focus(); });
+      name.addEventListener('click', function () {
+        bookEdit = { id: e.id, text: e.lines.join('\n'), text2: (e.lines2 || []).join('\n'), groups: groupsOf(e).join(', ') };
+        XF.forEach(function (k) { bookEdit[k] = e[k] || ''; });
+        renderAddress(); var ta = $('book-edit'); ta.focus();
+      });
       var x = el('button', '', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Delete ' + e.name);
       x.addEventListener('click', function () { storeJson(LS.book, book().filter(function (k) { return k.id !== e.id; })); renderAddress(); say('Deleted ' + e.name + ' from the address book.'); });
       li.appendChild(name); li.appendChild(x); ul.appendChild(li);
@@ -2217,11 +2425,24 @@
     var ta = document.createElement('textarea'); ta.id = 'book-edit'; ta.rows = Math.max(3, e.lines.length + 1); ta.spellcheck = false;
     ta.value = bookEdit.text; ta.setAttribute('aria-label', 'Address for ' + e.name);
     ta.addEventListener('input', function () { bookEdit.text = ta.value; });
+    var ta2 = document.createElement('textarea'); ta2.id = 'book-edit-2'; ta2.rows = e.lines2 ? e.lines2.length + 1 : 2; ta2.spellcheck = false;
+    ta2.value = bookEdit.text2 || ''; ta2.placeholder = 'Second address, like a PO box (optional)'; ta2.setAttribute('aria-label', 'Second address for ' + e.name);
+    ta2.addEventListener('input', function () { bookEdit.text2 = ta2.value; });
+    var field = function (k, type, ph) {
+      var i = document.createElement('input'); i.type = type; i.id = 'book-edit-' + k; i.placeholder = ph; i.value = bookEdit[k] || '';
+      i.spellcheck = false; i.autocomplete = 'off'; i.setAttribute('aria-label', ph + ' for ' + e.name);
+      i.addEventListener('input', function () { bookEdit[k] = i.value; });
+      return i;
+    };
+    var phones = el('div', 'pair2'), fp = field('phone', 'tel', 'Phone'), fp2 = field('phone2', 'tel', 'Second phone');
+    phones.appendChild(fp); phones.appendChild(fp2);
+    var fe = field('email', 'email', 'Email'), fe2 = field('email2', 'email', 'Second email');
     var gi = document.createElement('input'); gi.type = 'text'; gi.id = 'book-edit-groups'; gi.className = 'groups';
     gi.placeholder = 'Groups, like Family, Work'; gi.value = bookEdit.groups; gi.spellcheck = false; gi.autocomplete = 'off';
     gi.setAttribute('aria-label', 'Groups for ' + e.name + ', separated by commas'); gi.setAttribute('list', 'group-names');
     gi.addEventListener('input', function () { bookEdit.groups = gi.value; });
-    [ta, gi].forEach(function (x) { x.addEventListener('keydown', function (k) { if (k.key === 'Escape') { bookEdit = null; renderAddress(); } }); });
+    [ta, ta2, fp, fp2, fe, fe2, gi].forEach(function (x) { x.addEventListener('keydown', function (k) { if (k.key === 'Escape') { bookEdit = null; renderAddress(); } }); });
+    [fp, fp2, fe, fe2].forEach(function (x) { x.addEventListener('keydown', function (k) { if (k.key === 'Enter') { k.preventDefault(); saveBookEdit(e.id); } }); });
     gi.addEventListener('keydown', function (k) { if (k.key === 'Enter') { k.preventDefault(); saveBookEdit(e.id); } });
     var row = el('div', 'row');
     var save = el('button', 'btn primary sm', 'Save'); save.type = 'button';
@@ -2229,7 +2450,7 @@
     var cancel = el('button', 'btn ghost sm', 'Cancel'); cancel.type = 'button';
     cancel.addEventListener('click', function () { bookEdit = null; renderAddress(); });
     row.appendChild(save); row.appendChild(cancel);
-    box.appendChild(ta); box.appendChild(gi); box.appendChild(row);
+    [ta, ta2, phones, fe, fe2, gi, row].forEach(function (x) { box.appendChild(x); });
     return box;
   }
   function parseGroups(text) {
@@ -2254,7 +2475,16 @@
     if (same) {
       b = b.filter(function (k) { return k.id !== id; });
       setGroups(same, parseGroups(groupsOf(same).concat(groups).join(',')));
-    } else b.forEach(function (k) { if (k.id === id) { k.lines = lines; k.name = lines[0]; setGroups(k, groups); } });
+      XF.forEach(function (f) { var v = String(bookEdit[f] || '').trim(); if (v && !same[f]) same[f] = v; });
+      var l2 = withName(textLines(bookEdit.text2), lines[0]);
+      if (l2.length && !same.lines2) same.lines2 = l2;
+    } else b.forEach(function (k) {
+      if (k.id !== id) return;
+      k.lines = lines; k.name = lines[0]; setGroups(k, groups);
+      var lines2 = withName(textLines(bookEdit.text2), lines[0]);
+      if (lines2.length) k.lines2 = lines2; else { delete k.lines2; if (k.show) k.show.addr = 1; }
+      XF.forEach(function (f) { var v = String(bookEdit[f] || '').trim(); if (v) k[f] = v; else delete k[f]; });
+    });
     b.sort(function (x, y) { return x.name.localeCompare(y.name); });
     storeJson(LS.book, b);
     bookEdit = null;
@@ -2835,7 +3065,7 @@
     $('show-saved').addEventListener('change', function () { store(LS.showSaved, $('show-saved').checked ? 'on' : 'off'); if (st.kind === 'sheet') renderTally(); });
     $('group-pick').addEventListener('change', function () { groupShown = $('group-pick').value; bookEdit = null; renderAddress(); });
     $('group-fill').addEventListener('click', function () {
-      var g = groupShown, list = book().filter(function (e) { return inGroup(e, g); }).map(function (e) { return e.lines; });
+      var g = groupShown, list = book().filter(function (e) { return inGroup(e, g); }).map(contactLines);
       if (!list.length) return;
       fillAddresses(list, 'with ' + g);
     });
@@ -3001,29 +3231,40 @@
   }
 
   function wireAddress() {
+    wireExtras();
     // Address labels (with a design)
     $('addr-pick').addEventListener('change', function () {
-      var lines = pickedLines($('addr-pick').value);
-      if (lines) $('addr-text').value = lines.join('\n');
+      loadPicked($('addr-pick').value, $('addr-text'));
       $('addr-pick').value = '';
     });
     function placeAddr(all) {
-      var lines = textLines($('addr-text').value);
-      if (!lines.length) { say('Type an address or choose a saved one first.', 'warn'); $('addr-text').focus(); return; }
+      var addr = textLines($('addr-text').value), lines = boxLines();
+      if (!addr.length) { say('Type an address or choose a saved one first.', 'warn'); $('addr-text').focus(); return; }
       var nums = all ? openList() : [nextOpen()].filter(Boolean);
       if (!nums.length) { say('There are no open labels on this sheet.', 'warn'); return; }
       var d = designParas(lines, currentDesign(), st.fmt);
       if (currentDesign() === 'logo' && !d.pic) { say('Choose a logo first, or pick another design.', 'warn'); return; }
-      queueChange(function () { return writeLabels(nums, d.paras, d.pic); }).then(function () { noteRecent(lines); return refresh(); }).then(function () { say('Put the address on ' + labelList(nums) + '.'); });
+      var note = extrasNote();
+      queueChange(function () { return writeLabels(nums, d.paras, d.pic); }).then(function () { noteRecent(addr, note); return refresh(); }).then(function () {
+        say('Put the address on ' + labelList(nums) + '.');
+        askShrink(nums);
+      });
+    }
+    // Saves the address box (with its phones, emails) as a contact, or adds them to the one already saved.
+    function saveBox(box, what) {
+      var lines = textLines(box.value);
+      if (!lines.length) { say('Type ' + what + ' first.', 'warn'); return; }
+      var c = xVals(); c.lines = lines;
+      var e = contactById(xs.id);
+      if (e && e.lines2 && xs.which === 2) { c.lines = e.lines; c.lines2 = lines; }
+      var r = addContacts([c]);
+      say(r.added ? 'Saved ' + lines[0] + ' in the address book.' : r.updated ? 'Added the new details to ' + lines[0] + ' in the address book.' : 'That address is already in the address book.');
+      if (r.added) xs = { id: (book().filter(function (k) { return keyOf(k.lines) === keyOf(c.lines); })[0] || {}).id || '', which: 1 };
+      renderAddress();
     }
     $('addr-one').addEventListener('click', function () { placeAddr(false); });
     $('addr-all').addEventListener('click', function () { placeAddr(true); });
-    $('addr-save').addEventListener('click', function () {
-      var lines = textLines($('addr-text').value);
-      if (!lines.length) { say('Type an address first.', 'warn'); return; }
-      say(addToBook([lines]) ? 'Saved ' + lines[0] + ' in the address book.' : 'That address is already in the address book.');
-      renderAddress();
-    });
+    $('addr-save').addEventListener('click', function () { saveBox($('addr-text'), 'an address'); });
     $('addr-mine').addEventListener('click', function () {
       var v = $('addr-text').value.replace(/\s+$/, '');
       if (!v.trim()) { say('Type your return address first.', 'warn'); return; }
@@ -3054,52 +3295,57 @@
     from.value = fromAddress();
     from.addEventListener('input', function () { saveFrom(from.value); });
     $('to-pick').addEventListener('change', function () {
-      var lines = pickedLines($('to-pick').value);
-      if (lines) $('to-addr').value = lines.join('\n');
+      loadPicked($('to-pick').value, $('to-addr'));
       $('to-pick').value = '';
     });
-    $('to-save').addEventListener('click', function () {
-      var lines = textLines($('to-addr').value);
-      if (!lines.length) { say('Type the Ship to address first.', 'warn'); return; }
-      say(addToBook([lines]) ? 'Saved ' + lines[0] + ' in the address book.' : 'That address is already in the address book.');
-      renderAddress();
-    });
+    $('to-save').addEventListener('click', function () { saveBox($('to-addr'), 'the Ship to address'); });
     $('ship-addr-place').addEventListener('click', function () {
       var to = $('to-addr').value.replace(/\s+$/, '');
       if (!to.trim()) { say('Type the Ship to address first.', 'warn'); $('to-addr').focus(); return; }
       var n = nextOpen();
       if (!n) { say('There are no open labels on this sheet.', 'warn'); return; }
-      var fromText = from.value.replace(/\s+$/, '');
+      var fromText = from.value.replace(/\s+$/, ''), toText = boxLines().join('\n'), note = extrasNote();
       saveFrom(fromText);
-      queueChange(function () { return writeLabels([n], shippingParas(fromText, to, st.fmt)); }).then(function () { noteRecent(textLines(to)); return refresh(); }).then(function () {
+      queueChange(function () { return writeLabels([n], shippingParas(fromText, toText, st.fmt)); }).then(function () { noteRecent(textLines(to), note); return refresh(); }).then(function () {
         $('to-addr').value = '';
+        clearExtras();
         say('Address label placed on ' + theName(n) + '. You can edit it in the document.');
       });
     });
 
-    // Address book import and backup
+    // Address book import: read the file, then choose which contacts to import.
     var bookIn = $('book-file');
     bookIn.addEventListener('change', function () {
       var file = bookIn.files && bookIn.files[0]; bookIn.value = '';
       if (!file) return;
-      var name = (file.name || '').toLowerCase(), reader = new FileReader();
-      var done = function (lists) {
-        var added = addToBook(lists);
-        renderAddress();
-        say(lists.length ? 'Added ' + plural(added, 'address', 'es') + ' to the address book' + (lists.length > added ? ' (' + (lists.length - added) + ' were already there).' : '.') : 'No addresses with a street and city were found in that file.', lists.length ? '' : 'warn');
-      };
-      var fromRows = function (rows) { return T.rowsToAddresses(rows).map(function (a) { return T.addressLines(a, { home: homeCountry() }); }).filter(function (l) { return l.length > 1; }); };
+      var name = (file.name || '').toLowerCase(), reader = new FileReader(), opts = { home: homeCountry() };
+      var done = function (list) { startImport(file.name, list); };
       if (/\.xlsx$/.test(name)) {
-        reader.onload = function () { T.readXlsx(reader.result).then(function (rows) { done(fromRows(rows)); }).catch(function () { say('That Excel file couldn’t be read.', 'warn'); }); };
+        reader.onload = function () { T.readXlsx(reader.result).then(function (rows) { done(T.rowsToContacts(rows, opts)); }).catch(function () { say('That Excel file couldn’t be read.', 'warn'); }); };
         reader.readAsArrayBuffer(file);
       } else {
         reader.onload = function () {
           var text = String(reader.result || '');
-          if (/\.vcf$/.test(name) || /BEGIN:VCARD/i.test(text)) done(T.parseVCard(text).map(function (c) { return c.lines; }));
-          else done(fromRows(T.parseDelimited(text)));
+          if (/\.vcf$/.test(name) || /BEGIN:VCARD/i.test(text)) done(T.parseVCard(text, opts));
+          else done(T.rowsToContacts(T.parseDelimited(text), opts));
         };
         reader.readAsText(file);
       }
+    });
+    $('imp-filter').addEventListener('input', function () { if (imp) { imp.filter = $('imp-filter').value; renderImport(); } });
+    $('imp-all').addEventListener('click', function () { if (imp) { shownImport().forEach(function (i) { imp.picked[i] = true; }); renderImport(); } });
+    $('imp-none').addEventListener('click', function () { if (imp) { imp.picked = {}; renderImport(); } });
+    $('imp-cancel').addEventListener('click', function () { imp = null; renderImport(); say('Nothing was imported.'); });
+    $('imp-go').addEventListener('click', function () {
+      if (!imp) return;
+      var list = Object.keys(imp.picked).map(function (i) { return imp.list[Number(i)]; });
+      var r = addContacts(list);
+      imp = null;
+      renderAddress();
+      var parts = [];
+      if (r.added) parts.push('Imported ' + plural(r.added, 'contact') + '.');
+      if (r.updated) parts.push('Added new details to ' + plural(r.updated, 'contact') + ' already saved.');
+      say(parts.join(' ') || 'Those contacts were already in the address book.');
     });
     $('book-export').addEventListener('click', function () {
       var b = book();

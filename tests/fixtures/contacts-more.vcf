@@ -1,0 +1,22 @@
+BEGIN:VCARD
+VERSION:3.0
+FN:Jane Doe
+TEL;type=CELL;type=pref:617-555-0100
+TEL;type=HOME:617-555-0111
+EMAIL:jane@example.com
+ADR;type=HOME:;;12 Elm St;Boston;MA;02108;
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Sam Lee
+TEL:978-555-0123
+EMAIL;type=pref:sam@example.com
+EMAIL:sam@work.example
+ADR;type=HOME:;;5 Pine Rd;Salem;MA;01970;
+ADR;type=POSTAL:;;PO Box 77;Salem;MA;01971;
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Phone Only
+TEL:555-0199
+END:VCARD

@@ -230,8 +230,24 @@
           <button type="button" id="ship-addr-place" class="btn primary wide">Put on the next open label</button>
           <button type="button" id="to-save" class="btn link">Save Ship to in address book</button>
         </div>
+        <!-- Shared by the two address forms above: the panel moves them next to the address box in use. -->
+        <div id="addr-which" class="seg" role="radiogroup" aria-label="Which address" hidden>
+          <button type="button" role="radio" id="addr-which-1" aria-checked="true">Address 1</button>
+          <button type="button" role="radio" id="addr-which-2" aria-checked="false">Address 2</button>
+        </div>
+        <div id="addr-extras" class="extras">
+          <div class="xrow"><label for="x-phone">Phone</label><input type="tel" id="x-phone" autocomplete="off" spellcheck="false"><label class="on"><input type="checkbox" id="x-phone-on"> On label</label></div>
+          <div class="xrow" id="x-phone2-row" hidden><label for="x-phone2">Phone 2</label><input type="tel" id="x-phone2" autocomplete="off" spellcheck="false"><label class="on"><input type="checkbox" id="x-phone2-on"> On label</label></div>
+          <div class="xrow"><label for="x-email">Email</label><input type="email" id="x-email" autocomplete="off" spellcheck="false"><label class="on"><input type="checkbox" id="x-email-on"> On label</label></div>
+          <div class="xrow" id="x-email2-row" hidden><label for="x-email2">Email 2</label><input type="email" id="x-email2" autocomplete="off" spellcheck="false"><label class="on"><input type="checkbox" id="x-email2-on"> On label</label></div>
+          <div id="x-keep" class="row links" hidden>
+            <button type="button" id="x-sheet" class="btn link" hidden>Use for this sheet</button>
+            <button type="button" id="x-contact" class="btn link" hidden>Remember for this contact</button>
+            <button type="button" class="info" aria-label="About phone and email on labels" data-tip="Ticked phones and emails print under the address. Use for this sheet makes your choice the starting point for every address on this sheet. Remember saves the phone, email and choices with the contact, so they come back next time.">i</button>
+          </div>
+        </div>
         <details class="inner">
-          <summary>Address book (<span id="book-count">0</span>) <button type="button" class="info" aria-label="About the address book" data-tip="Click an address to change it or put it in groups, like Family or Work. Import contacts from the Mac Contacts app (.vcf), Google Contacts (.csv) or an Excel list. Copy all puts your addresses on the clipboard, ready to paste into Excel.">i</button></summary>
+          <summary>Address book (<span id="book-count">0</span>) <button type="button" class="info" aria-label="About the address book" data-tip="Click an address to change it, add a second address, phones and emails, or put it in groups, like Family or Work. Import contacts from the Mac Contacts app (.vcf), Google or Outlook (.csv) or an Excel list; you choose which ones. Copy all puts your addresses on the clipboard, ready to paste into Excel.">i</button></summary>
           <div id="group-row" class="row group-row" hidden>
             <select id="group-pick" class="grow" aria-label="Show a group"></select>
             <button type="button" id="group-fill" class="btn ghost sm" hidden>Put on open labels</button>
@@ -242,6 +258,14 @@
             <input type="file" id="book-file" class="sr" accept=".vcf,.csv,.txt,.xlsx,text/vcard,text/csv">
             <label for="book-file" class="btn ghost sm" tabindex="0" id="book-file-label">Import contacts</label>
             <button type="button" id="book-export" class="btn ghost sm">Copy all</button>
+          </div>
+          <div id="imp" class="imp" hidden>
+            <p id="imp-head" class="fl"></p>
+            <input type="search" id="imp-filter" placeholder="Search" aria-label="Search the contacts in the file" autocomplete="off" spellcheck="false">
+            <div class="row links"><button type="button" id="imp-all" class="btn link">Select all</button><button type="button" id="imp-none" class="btn link">Select none</button></div>
+            <ul id="imp-list" class="imp-list"></ul>
+            <p id="imp-note" class="hint"></p>
+            <div class="row"><button type="button" id="imp-go" class="btn primary sm" disabled>Import</button><button type="button" id="imp-cancel" class="btn ghost sm">Cancel</button></div>
           </div>
           <textarea id="book-csv" rows="4" hidden aria-label="Address book as CSV"></textarea>
         </details>

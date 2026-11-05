@@ -28,8 +28,8 @@
   </header>
   <div class="grid-wrap">
     <table id="grid" class="grid" aria-label="Addresses">
-      <colgroup><col class="c-n"><col class="c-name"><col class="c-co"><col class="c-st"><col class="c-apt"><col class="c-city"><col class="c-state"><col class="c-zip"><col class="c-x"></colgroup>
-      <thead><tr><th title="The label each row goes on">Label</th><th>Name</th><th>Company</th><th>Street</th><th>Apt/Suite</th><th>City</th><th>State/Prov</th><th>ZIP/Postal</th><th><span class="sr">Delete</span></th></tr></thead>
+      <colgroup><col class="c-n"><col class="c-name"><col class="c-co"><col class="c-st"><col class="c-apt"><col class="c-city"><col class="c-state"><col class="c-zip"><col class="c-phone"><col class="c-email"><col class="c-x"></colgroup>
+      <thead><tr><th title="The label each row goes on">Label</th><th>Name</th><th>Company</th><th>Street</th><th>Apt/Suite</th><th>City</th><th>State/Prov</th><th>ZIP/Postal</th><th>Phone</th><th>Email</th><th><span class="sr">Delete</span></th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
   </div>
@@ -39,6 +39,7 @@
   </div>
   <footer class="bottom">
     <p id="count" class="hint"></p>
+    <span class="onl" title="Leave a row's phone or email empty to keep it off that label.">On labels: <label><input type="checkbox" id="on-phone"> Phone</label> <label><input type="checkbox" id="on-email"> Email</label></span>
     <p id="msg" class="msg" role="status" aria-live="polite"></p>
     <div class="acts">
       <button type="button" id="cancel" class="btn ghost">Close</button>
